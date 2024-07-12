@@ -608,11 +608,11 @@ class RacecarSimulator {
         marker.pose.position.x = -4.808;
         marker.pose.position.y = -4.331;
         marker.pose.position.z = 1.0;
-        marker.scale.z = 1.0; // 텍스트 크기
+        marker.scale.z = 0.5; // 텍스트 크기
 
-        // 시간을 문자열로 변환 (최대 소수점 3자리)
+        // 시간을 문자열로 변환 (최대 소수점 1자리)
         std::stringstream ss;
-        ss << std::fixed << std::setprecision(3) << time;
+        ss << std::fixed << std::setprecision(1) << time;
         marker.text = "Sim Time : " + ss.str();
 
         // 색상 및 기간 설정
@@ -1040,11 +1040,11 @@ class RacecarSimulator {
 
             // Update the state
             if (model_type_ == ORIGINALMODEL)
-                state_[i] = STKinematics::update(state_[i], accel_[i], steer_angle_vel_[i], params_, 0.001);
+                state_[i] = STKinematics::update(state_[i], accel_[i], steer_angle_vel_[i], params_, 0.025);
             else if (model_type_ == PAJEKAMODEL)
-                state_[i] = STKinematics::update_with_pacejka(state_[i], accel_[i], steer_angle_vel_[i], params_, 0.001);
+                state_[i] = STKinematics::update_with_pacejka(state_[i], accel_[i], steer_angle_vel_[i], params_, 0.025);
             else {
-                state_[i] = STKinematics::update(state_[i], accel_[i], steer_angle_vel_[i], params_, 0.001);
+                state_[i] = STKinematics::update(state_[i], accel_[i], steer_angle_vel_[i], params_, 0.025);
             }
 
             state_[i].velocity = std::min(std::max(state_[i].velocity, -max_speed_), max_speed_);
@@ -1148,6 +1148,7 @@ class RacecarSimulator {
             is_collision.data = is_collision_;
             if (is_collision_)
                 collision_pub_.publish(is_collision);
+                ROS_INFO("Collision detected");
             if (is_collision_ && restart_mode_) {
                 RestartSimulation();
             }
@@ -1442,7 +1443,7 @@ class RacecarSimulator {
     }
 
     void drive_callback(const ackermann_msgs::AckermannDriveStampedConstPtr &msg, size_t i) {
-        std::cout << "received drive command \n";
+        // std::cout << "received drive command \n";
         desired_speed_[i] = msg->drive.speed;
         desired_accel_[i] = msg->drive.acceleration;
         desired_steer_ang_[i] = msg->drive.steering_angle;
@@ -1608,6 +1609,11 @@ class RacecarSimulator {
         sensor_msgs::Imu imu;
         imu.header.stamp = timestamp;
         imu.header.frame_id = map_frame;
+        
+        
+
+
+
 
         imu_pub_[i].publish(imu);
     }

@@ -127,13 +127,13 @@ random_pose: true
 #v : velocity control , a : accel control
 control_mode: "a"
 synchronized_mode: false #MPC의 synchronized_mode_와 같아야함.
-sync_time_step: 0.001 # MPC Ts_와 일치해야함.
+sync_time_step: 0.025 # MPC Ts_와 일치해야함.
 restart_mode: false
 noise_mode: true
 B: 2.0
 C: 0.1
 D: 250
-pose_noise: 0.0
-yaw_noise: 0.0
+pose_noise: 0.01
+yaw_noise: 0.01
 vel_noise: 0.0
 model_type: 1
