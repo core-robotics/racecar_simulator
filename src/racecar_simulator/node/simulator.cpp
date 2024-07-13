@@ -1724,6 +1724,7 @@ public:
         sensor_msgs::Imu imu;
         imu.header.stamp = timestamp;
         imu.header.frame_id = map_frame;
+        
 
         imu_pub_[i].publish(imu);
     }
