@@ -134,7 +134,7 @@ private:
     ros::NodeHandle n;
     int obj_num_;
     // The transformation frames used
-    std::string map_frame, base_frame, scan_frame;
+    std::string map_frame, base_frame, scan_frame,imu_frame;
 
     // obstacle states (1D index) and parameters
     std::vector<int> static_obs_idx;
@@ -247,9 +247,9 @@ private:
     double yaw_noise_;
     double vel_noise_;
 
-    double imu_accel_noise_;
-    double imu_gyro_noise_;
-    double imu_orientation_noise_;
+    double imu_accel_std_dev_;
+    double imu_gyro_std_dev_;
+    double imu_orientation_std_dev_;
 
     int model_type_;
     int collision_count_;
@@ -289,6 +289,7 @@ public:
         n.getParam("map_frame", map_frame);
         n.getParam("base_frame", base_frame);
         n.getParam("scan_frame", scan_frame);
+        n.getParam("imu_frame", imu_frame);
 
         // Fetch the car parameters
         int scan_beams;
@@ -337,9 +338,9 @@ public:
         n.getParam("pose_noise", pose_noise_);
         n.getParam("yaw_noise", yaw_noise_);
         n.getParam("vel_noise", vel_noise_);
-        n.getParam("imu_accel_noise", imu_accel_noise_);
-        n.getParam("imu_gyro_noise", imu_gyro_noise_);
-        n.getParam("imu_orientation_noise", imu_orientation_noise_);
+        n.getParam("imu_accel_std_dev", imu_accel_std_dev_);
+        n.getParam("imu_gyro_std_dev", imu_gyro_std_dev_);
+        n.getParam("imu_orientation_std_dev", imu_orientation_std_dev_);
 
         n.getParam("model_type", model_type_);
         std::string param_path;
@@ -1740,18 +1741,24 @@ public:
         double ax_noise, ay_noise, az_noise;
         double wx_noise, wy_noise, wz_noise;
         double roll_noise, pitch_noise, yaw_noise;
-
+        std::random_device rd;
+        std::mt19937 generator(rd());
+        std::normal_distribution<double> accel_noise(0.0, imu_accel_std_dev_);
+        std::normal_distribution<double> gyro_noise(0.0, imu_gyro_std_dev_);
+        std::normal_distribution<double> orientation_noise(0.0, imu_orientation_std_dev_);
+        
+        // static std::default_random_engine generator;
         if (noise_mode_)
         {
-            ax_noise = imu_accel_noise_ * (rand() % 2 - 1);
-            ay_noise = imu_accel_noise_ * (rand() % 2 - 1);
-            az_noise = imu_accel_noise_ * (rand() % 2 - 1);
-            wx_noise = imu_gyro_noise_ * (rand() % 2 - 1);
-            wy_noise = imu_gyro_noise_ * (rand() % 2 - 1);
-            wz_noise = imu_gyro_noise_ * (rand() % 2 - 1);
-            roll_noise = imu_orientation_noise_ * (rand() % 2 - 1);
-            pitch_noise = imu_orientation_noise_ * (rand() % 2 - 1);
-            yaw_noise = imu_orientation_noise_ * (rand() % 2 - 1);
+            ax_noise = accel_noise(generator);
+            ay_noise = accel_noise(generator);
+            az_noise = accel_noise(generator);
+            wx_noise = gyro_noise(generator);
+            wy_noise = gyro_noise(generator);
+            wz_noise = gyro_noise(generator);
+            roll_noise = orientation_noise(generator);
+            pitch_noise = orientation_noise(generator);
+            yaw_noise = orientation_noise(generator);
         }
         else
         {
@@ -1782,6 +1789,19 @@ public:
         imu.orientation.y = quat.y();
         imu.orientation.z = quat.z();
         imu.orientation.w = quat.w();
+
+        imu.linear_acceleration_covariance[0] = imu_accel_std_dev_*imu_accel_std_dev_;
+        imu.linear_acceleration_covariance[4] = imu_accel_std_dev_*imu_accel_std_dev_;
+        imu.linear_acceleration_covariance[8] = imu_accel_std_dev_*imu_accel_std_dev_;
+
+        imu.angular_velocity_covariance[0] = imu_gyro_std_dev_*imu_gyro_std_dev_;
+        imu.angular_velocity_covariance[4] = imu_gyro_std_dev_*imu_gyro_std_dev_;
+        imu.angular_velocity_covariance[8] = imu_gyro_std_dev_*imu_gyro_std_dev_;
+
+        imu.orientation_covariance[0] = imu_orientation_std_dev_*imu_orientation_std_dev_;
+        imu.orientation_covariance[4] = imu_orientation_std_dev_*imu_orientation_std_dev_;
+        imu.orientation_covariance[8] = imu_orientation_std_dev_*imu_orientation_std_dev_;
+
 
         imu_pub_[i].publish(imu);
     }

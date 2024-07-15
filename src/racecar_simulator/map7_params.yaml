@@ -116,6 +116,7 @@ collision_file: "collision_file"
 map_frame: "map"
 base_frame: "base_link"
 scan_frame: "scan"
+imu_frame: "imu_link"
 
 # Turn this off for mapping
 broadcast_transform: true
@@ -141,8 +142,8 @@ pose_noise: 0.01
 yaw_noise: 0.01
 vel_noise: 0.0
 
-imu_accel_noise: 0.0
-imu_gyro_noise: 0.0
-imu_orientaion_noise: 0.0
+imu_accel_std_dev: 0.1
+imu_gyro_std_dev: 0.1
+imu_orientation_std_dev: 0.1
 
 model_type: 1
