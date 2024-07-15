@@ -149,7 +149,7 @@ private:
 
     // The car state and parameters
     std::vector<CarState> state_;
-    std::vector<CarState> prev_state_;
+    
     //  std::vector<std::shared_ptr<IState>> states_;
     double previous_seconds;
     double init_time_;
@@ -677,6 +677,7 @@ public:
     void clearvector()
     {
         state_.clear();
+
         accel_.clear();
         steer_angle_vel_.clear();
         desired_speed_.clear();
@@ -845,6 +846,7 @@ public:
 
             if (!obj_collision_[i])
             {
+
                 state_[i] = STKinematics::update(state_[i], accel_[i], steer_angle_vel_[i], params_, sync_time_step_);
                 state_[i].velocity = std::min(std::max(state_[i].velocity, -max_speed_), max_speed_);
                 state_[i].steer_angle = std::min(std::max(state_[i].steer_angle, -max_steering_angle_), max_steering_angle_);
@@ -1222,7 +1224,7 @@ public:
             }
         }
         previous_seconds = current_seconds;
-        prev_state_ = state_;
+        
 
         visualizeTimeInRviz(current_seconds - init_time_);
 
@@ -1766,23 +1768,20 @@ public:
 
         sensor_msgs::Imu imu;
         imu.header.stamp = timestamp_;
-        imu.header.frame_id = map_frame;
-        double current_seconds = timestamp_.toSec();
-        double dt = current_seconds - previous_seconds;
-        double current_accel = (state_[i].velocity - prev_state_[i].velocity) / dt;
-        
-        // imu.linear_acceleration.x = current_accel*cos(state_[i].slip_angle)-state_[i].velocity*state_[i].angular_velocity*sin(state_[i].slip_angle) + ax_noise;
-        // imu.linear_acceleration.y = current_accel*sin(state_[i].slip_angle)+state_[i].velocity*state_[i].angular_velocity*cos(state_[i].slip_angle) + ay_noise;
-        // imu.linear_acceleration.z = az_noise;
-        // imu.angular_velocity.x = wx_noise;
-        // imu.angular_velocity.y = wy_noise;
-        // imu.angular_velocity.z = state_[i].angular_velocity+wz_noise;
-        // tf2::Quaternion quat;
-        // quat.setEuler(roll_noise, pitch_noise, state_[i].theta + yaw_noise);
-        // imu.orientation.x = quat.x();
-        // imu.orientation.y = quat.y();
-        // imu.orientation.z = quat.z();
-        // imu.orientation.w = quat.w();
+        imu.header.frame_id = base_frame + std::to_string(i);
+
+        imu.linear_acceleration.x = accel_[i] *cos(state_[i].slip_angle)-state_[i].velocity*state_[i].angular_velocity*sin(state_[i].slip_angle) + ax_noise;
+        imu.linear_acceleration.y = accel_[i] *sin(state_[i].slip_angle)+state_[i].velocity*state_[i].angular_velocity*cos(state_[i].slip_angle) + ay_noise;
+        imu.linear_acceleration.z = az_noise;
+        imu.angular_velocity.x = wx_noise;
+        imu.angular_velocity.y = wy_noise;
+        imu.angular_velocity.z = state_[i].angular_velocity+wz_noise;
+        tf2::Quaternion quat;
+        quat.setEuler(roll_noise, pitch_noise, state_[i].theta + yaw_noise);
+        imu.orientation.x = quat.x();
+        imu.orientation.y = quat.y();
+        imu.orientation.z = quat.z();
+        imu.orientation.w = quat.w();
 
         imu_pub_[i].publish(imu);
     }
