@@ -149,6 +149,7 @@ private:
 
     // The car state and parameters
     std::vector<CarState> state_;
+    std::vector<CarState> prev_state_;
     //  std::vector<std::shared_ptr<IState>> states_;
     double previous_seconds;
     double init_time_;
@@ -249,8 +250,6 @@ private:
     double imu_accel_noise_;
     double imu_gyro_noise_;
     double imu_orientation_noise_;
-
-
 
     int model_type_;
     int collision_count_;
@@ -357,7 +356,7 @@ public:
 
         // integrator(update_pose_rate, json_paths);
         is_collision_ = false;
-        collision_count_=0;
+        collision_count_ = 0;
         std::vector<geometry_msgs::PointStamped> random_pose_array;
         if (random_pose_)
         {
@@ -809,7 +808,7 @@ public:
         // added_obs.push_back(ind);
         // add_obs(ind);
     }
-    
+
     bool SyncControlServer(control_msgs::sync_control::Request &req, control_msgs::sync_control::Response &res)
     {
         desired_accel_[0] = req.control_input.data[0];
@@ -1223,6 +1222,7 @@ public:
             }
         }
         previous_seconds = current_seconds;
+        prev_state_ = state_;
 
         visualizeTimeInRviz(current_seconds - init_time_);
 
@@ -1234,7 +1234,7 @@ public:
             is_collision.data = is_collision_;
             if (is_collision_)
                 collision_pub_.publish(is_collision);
-                std::cout<<"collision count: "<<collision_count_++<<"\n\n";
+            std::cout << "collision count: " << collision_count_++ << "\n\n";
             if (is_collision_ && restart_mode_)
             {
                 RestartSimulation();
@@ -1731,7 +1731,7 @@ public:
         }
     }
 
-    void pub_imu(ros::Time timestamp, size_t i)
+    void pub_imu(ros::Time timestamp_, size_t i)
     {
         // Make an IMU message and publish it
         // TODO: make imu message
@@ -1763,22 +1763,26 @@ public:
             pitch_noise = 0.0;
             yaw_noise = 0.0;
         }
+
         sensor_msgs::Imu imu;
-        imu.header.stamp = timestamp;
+        imu.header.stamp = timestamp_;
         imu.header.frame_id = map_frame;
-        imu.linear_acceleration.x = 0;
-        imu.linear_acceleration.y = 0;
-        imu.linear_acceleration.z = 0;
-        imu.angular_velocity.x = 0;
-        imu.angular_velocity.y = 0;
-        imu.angular_velocity.z = 0;
-        imu.orientation.x = 0;
-        imu.orientation.y = 0;
-        imu.orientation.z = 0;
-        imu.orientation.w = 0;
-
+        double current_seconds = timestamp_.toSec();
+        double dt = current_seconds - previous_seconds;
+        double current_accel = (state_[i].velocity - prev_state_[i].velocity) / dt;
         
-
+        // imu.linear_acceleration.x = current_accel*cos(state_[i].slip_angle)-state_[i].velocity*state_[i].angular_velocity*sin(state_[i].slip_angle) + ax_noise;
+        // imu.linear_acceleration.y = current_accel*sin(state_[i].slip_angle)+state_[i].velocity*state_[i].angular_velocity*cos(state_[i].slip_angle) + ay_noise;
+        // imu.linear_acceleration.z = az_noise;
+        // imu.angular_velocity.x = wx_noise;
+        // imu.angular_velocity.y = wy_noise;
+        // imu.angular_velocity.z = state_[i].angular_velocity+wz_noise;
+        // tf2::Quaternion quat;
+        // quat.setEuler(roll_noise, pitch_noise, state_[i].theta + yaw_noise);
+        // imu.orientation.x = quat.x();
+        // imu.orientation.y = quat.y();
+        // imu.orientation.z = quat.z();
+        // imu.orientation.w = quat.w();
 
         imu_pub_[i].publish(imu);
     }
