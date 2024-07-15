@@ -129,11 +129,20 @@ control_mode: "a"
 synchronized_mode: false #MPC의 synchronized_mode_와 같아야함.
 sync_time_step: 0.025 # MPC Ts_와 일치해야함.
 restart_mode: false
-noise_mode: true
+
+#For Pajecka tire model
 B: 1.5
 C: 1.5
 D: 31.0
+
+#For noise
+noise_mode: true
 pose_noise: 0.01
 yaw_noise: 0.01
 vel_noise: 0.0
+
+imu_accel_noise: 0.0
+imu_gyro_noise: 0.0
+imu_orientaion_noise: 0.0
+
 model_type: 1

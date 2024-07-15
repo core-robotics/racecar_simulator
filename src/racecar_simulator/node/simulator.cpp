@@ -239,10 +239,19 @@ private:
     // for collision check
     bool is_collision_;
     bool restart_mode_;
+
+    // for noise
     bool noise_mode_;
     double pose_noise_;
     double yaw_noise_;
     double vel_noise_;
+
+    double imu_accel_noise_;
+    double imu_gyro_noise_;
+    double imu_orientation_noise_;
+
+
+
     int model_type_;
     int collision_count_;
     std::vector<bool> obj_collision_;
@@ -329,6 +338,10 @@ public:
         n.getParam("pose_noise", pose_noise_);
         n.getParam("yaw_noise", yaw_noise_);
         n.getParam("vel_noise", vel_noise_);
+        n.getParam("imu_accel_noise", imu_accel_noise_);
+        n.getParam("imu_gyro_noise", imu_gyro_noise_);
+        n.getParam("imu_orientation_noise", imu_orientation_noise_);
+
         n.getParam("model_type", model_type_);
         std::string param_path;
         std::string cost_path;
@@ -796,6 +809,7 @@ public:
         // added_obs.push_back(ind);
         // add_obs(ind);
     }
+    
     bool SyncControlServer(control_msgs::sync_control::Request &req, control_msgs::sync_control::Response &res)
     {
         desired_accel_[0] = req.control_input.data[0];
@@ -1721,10 +1735,50 @@ public:
     {
         // Make an IMU message and publish it
         // TODO: make imu message
+        double ax_noise, ay_noise, az_noise;
+        double wx_noise, wy_noise, wz_noise;
+        double roll_noise, pitch_noise, yaw_noise;
+
+        if (noise_mode_)
+        {
+            ax_noise = imu_accel_noise_ * (rand() % 2 - 1);
+            ay_noise = imu_accel_noise_ * (rand() % 2 - 1);
+            az_noise = imu_accel_noise_ * (rand() % 2 - 1);
+            wx_noise = imu_gyro_noise_ * (rand() % 2 - 1);
+            wy_noise = imu_gyro_noise_ * (rand() % 2 - 1);
+            wz_noise = imu_gyro_noise_ * (rand() % 2 - 1);
+            roll_noise = imu_orientation_noise_ * (rand() % 2 - 1);
+            pitch_noise = imu_orientation_noise_ * (rand() % 2 - 1);
+            yaw_noise = imu_orientation_noise_ * (rand() % 2 - 1);
+        }
+        else
+        {
+            ax_noise = 0.0;
+            ay_noise = 0.0;
+            az_noise = 0.0;
+            wx_noise = 0.0;
+            wy_noise = 0.0;
+            wz_noise = 0.0;
+            roll_noise = 0.0;
+            pitch_noise = 0.0;
+            yaw_noise = 0.0;
+        }
         sensor_msgs::Imu imu;
         imu.header.stamp = timestamp;
         imu.header.frame_id = map_frame;
+        imu.linear_acceleration.x = 0;
+        imu.linear_acceleration.y = 0;
+        imu.linear_acceleration.z = 0;
+        imu.angular_velocity.x = 0;
+        imu.angular_velocity.y = 0;
+        imu.angular_velocity.z = 0;
+        imu.orientation.x = 0;
+        imu.orientation.y = 0;
+        imu.orientation.z = 0;
+        imu.orientation.w = 0;
+
         
+
 
         imu_pub_[i].publish(imu);
     }
