@@ -190,7 +190,7 @@ private:
 
     // synchronized mode
     double sync_time_step_; // in seconds, TODO : synchronize with MPC time
-                            // step(now 0.025)
+                            
     bool synchronized_mode_;
     // double sync_time_;
     ros::ServiceServer reset_service_;
@@ -240,7 +240,8 @@ private:
     // for collision check
     bool is_collision_;
     bool restart_mode_;
-
+    int scan_beams;
+    double update_pose_rate, scan_std_dev;
     // for noise
     bool noise_mode_;
     double pose_noise_;
@@ -292,8 +293,7 @@ public:
         n.getParam("imu_frame", imu_frame);
 
         // Fetch the car parameters
-        int scan_beams;
-        double update_pose_rate, scan_std_dev;
+       
         n.getParam("obj_num", obj_num_);
         n.getParam("wheelbase", params_.wheelbase);
         n.getParam("update_pose_rate", update_pose_rate);
@@ -1125,12 +1125,12 @@ public:
 
             // Update the state
             if (model_type_ == ORIGINALMODEL)
-                state_[i] = STKinematics::update(state_[i], accel_[i], steer_angle_vel_[i], params_, 0.025);
+                state_[i] = STKinematics::update(state_[i], accel_[i], steer_angle_vel_[i], params_, update_pose_rate);
             else if (model_type_ == PAJEKAMODEL)
-                state_[i] = STKinematics::update_with_pacejka(state_[i], accel_[i], steer_angle_vel_[i], params_, 0.025);
+                state_[i] = STKinematics::update_with_pacejka(state_[i], accel_[i], steer_angle_vel_[i], params_, update_pose_rate);
             else
             {
-                state_[i] = STKinematics::update(state_[i], accel_[i], steer_angle_vel_[i], params_, 0.025);
+                state_[i] = STKinematics::update(state_[i], accel_[i], steer_angle_vel_[i], params_, update_pose_rate);
             }
 
             state_[i].velocity = std::min(std::max(state_[i].velocity, -max_speed_), max_speed_);
