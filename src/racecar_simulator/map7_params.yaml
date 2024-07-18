@@ -9,11 +9,11 @@ wheelbase: 0.3302 # meters
 width: 0.2032 # meters
 
 # Limits on the speed and steering angle
-max_speed: 12. #  meters/second
+max_speed: 12.0 #  meters/second
 max_steering_angle: 0.41 # radians
-max_accel: 9.00 # meters/second^2
-max_decel: 9.00 # meters/second^2
-max_steering_vel: 0.5 # radians/second
+max_accel: 9.80 # meters/second^2
+max_decel: 9.80 # meters/second^2
+max_steering_vel: 2.8 # radians/second
 friction_coeff: 0.8 # - (complete estimate)
 height_cg: 0.074 # m (roughly measured to be 3.25 in)
 l_cg2rear: 0.17145 # m (decently measured to be 6.75 in)
@@ -128,19 +128,19 @@ random_pose: true
 #v : velocity control , a : accel control
 control_mode: "a"
 synchronized_mode: false #MPC의 synchronized_mode_와 같아야함.
-sync_time_step: 0.025 # MPC Ts_와 일치해야함.
+sync_time_step: 0.001 # MPC Ts_와 일치해야함.
 restart_mode: false
 
 #For Pajecka tire model
 B: 1.5
 C: 1.5
-D: 31.0
+D: 35.0
 
 #For noise
-noise_mode: true
+noise_mode: false
 pose_noise: 0.01
 yaw_noise: 0.01
-vel_noise: 0.0
+vel_noise: 0.03
 
 imu_accel_std_dev: 1.0
 imu_gyro_std_dev: 1.0
