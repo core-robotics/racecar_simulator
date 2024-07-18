@@ -138,9 +138,9 @@ D: 35.0
 
 #For noise
 noise_mode: false
-pose_noise: 0.01
+pose_noise: 0.0
 yaw_noise: 0.01
-vel_noise: 0.03
+vel_noise: 0.01
 
 imu_accel_std_dev: 1.0
 imu_gyro_std_dev: 1.0
