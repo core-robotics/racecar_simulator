@@ -35,6 +35,7 @@
 #include "control_msgs/CarState.h"
 #include "control_msgs/reset.h"
 #include "control_msgs/sync_control.h"
+#include "control_msgs/DDN_state.h"
 #include <std_msgs/Bool.h>
 #include <std_msgs/Float32MultiArray.h>
 
@@ -202,7 +203,7 @@ private:
     std::vector<ros::Publisher> odom_pub_;
     std::vector<ros::Publisher> imu_pub_;
     std::vector<ros::Publisher> noise_pose_pub_;
-
+    
     // publisher for map with obstacles
     ros::Publisher map_pub_;
 
@@ -211,6 +212,8 @@ private:
 
     // ros time publisher
     ros::Publisher time_pub_;
+
+    
 
     // keep an original map for obstacles
     nav_msgs::OccupancyGrid original_map_;
@@ -1281,6 +1284,7 @@ public:
 
         state_pub_[i].publish(state);
     }
+    
 
     /**
      * @brief Get the Coner Point object
