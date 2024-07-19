@@ -25,7 +25,7 @@ add_message_files(
     waypoint_array.msg
     CarState.msg
     debug.msg
-    DDN_state.msg
+    ddn_state.msg
 )
 
 ## Generate services in the 'srv' folder

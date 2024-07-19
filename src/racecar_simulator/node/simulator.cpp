@@ -35,7 +35,7 @@
 #include "control_msgs/CarState.h"
 #include "control_msgs/reset.h"
 #include "control_msgs/sync_control.h"
-#include "control_msgs/DDN_state.h"
+#include "control_msgs/ddn_state.h"
 #include <std_msgs/Bool.h>
 #include <std_msgs/Float32MultiArray.h>
 
@@ -200,6 +200,7 @@ private:
     bool broadcast_transform;
     std::vector<ros::Publisher> scan_pub_;
     std::vector<ros::Publisher> state_pub_;
+    std::vector<ros::Publisher> ddn_state_pub_;
     std::vector<ros::Publisher> odom_pub_;
     std::vector<ros::Publisher> imu_pub_;
     std::vector<ros::Publisher> noise_pose_pub_;
@@ -277,12 +278,13 @@ public:
         previous_seconds = ros::Time::now().toSec();
 
         // Get the topic names
-        std::string drive_topic, map_topic, scan_topic, pose_topic, state_topic, pose_rviz_topic, opp_pose_rviz_topic, odom_topic, imu_topic;
+        std::string drive_topic, map_topic, scan_topic, pose_topic, state_topic, pose_rviz_topic, opp_pose_rviz_topic, odom_topic, imu_topic, ddn_state_topic;
         n.getParam("drive_topic", drive_topic);
         n.getParam("map_topic", map_topic);
         n.getParam("scan_topic", scan_topic);
         n.getParam("pose_topic", pose_topic);
         n.getParam("state_topic", state_topic);
+        n.getParam("ddn_state_topic", ddn_state_topic);
         n.getParam("odom_topic", odom_topic);
         n.getParam("pose_rviz_topic", pose_rviz_topic);
         n.getParam("opp_pose_rviz_topic", opp_pose_rviz_topic);
@@ -485,7 +487,7 @@ public:
         for (int i = 0; i < obj_num_; i++)
         {
             ros::Subscriber drive_sub, pose_sub;
-            ros::Publisher scan_pub, odom_pub, imu_pub, state_pub, noise_pose_pub;
+            ros::Publisher scan_pub, odom_pub, imu_pub, state_pub, ddn_state_pub, noise_pose_pub;
             // ros::ServiceClient client;
             if (synchronized_mode_)
             {
@@ -504,6 +506,8 @@ public:
                                                                                boost::bind(&RacecarSimulator::drive_callback, this, _1, i));
             }
             state_pub = n.advertise<control_msgs::CarState>(state_topic + std::to_string(i), 1);
+
+            ddn_state_pub=n.advertise<control_msgs::ddn_state>(ddn_state_topic + std::to_string(i), 1);
 
             pose_sub = n.subscribe<geometry_msgs::PoseStamped>(pose_topic + std::to_string(i), 1,
                                                                boost::bind(&RacecarSimulator::pose_callback, this, _1, i));
@@ -1147,6 +1151,8 @@ public:
 
             pub_state(timestamp, i);
 
+            pub_ddn_state(timestamp, i);
+
             // Make an odom message as well and publish it
             pub_odom(timestamp, i);
 
@@ -1284,7 +1290,23 @@ public:
 
         state_pub_[i].publish(state);
     }
-    
+
+    void pub_ddn_state(ros::Time timestamp, size_t i)
+    {
+        control_msgs::ddn_state ddn_state;
+        ddn_state.x = state_[i].x;
+        ddn_state.y = state_[i].y;
+        ddn_state.phi = state_[i].theta;
+        ddn_state.vx= (state_[i].velocity)*cos(state_[i].slip_angle);
+        ddn_state.vy= (state_[i].velocity)*sin(state_[i].slip_angle);
+        ddn_state.omega = state_[i].angular_velocity;
+        ddn_state.steer = state_[i].steer_angle;
+        ddn_state.throttle = accel_[i];
+
+
+        ddn_state_pub_[i].publish(ddn_state);
+    }
+
 
     /**
      * @brief Get the Coner Point object
