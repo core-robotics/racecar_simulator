@@ -537,6 +537,7 @@ public:
             // client_.push_back(client);
             drive_sub_.push_back(drive_sub);
             state_pub_.push_back(state_pub);
+            ddn_state_pub_.push_back(ddn_state_pub);
             // pose_sub_.push_back(pose_sub);
             // pose_rviz_sub_.push_back(pose_rviz_sub);
             noise_pose_pub_.push_back(noise_pose_pub);
@@ -685,7 +686,6 @@ public:
     void clearvector()
     {
         state_.clear();
-        // ddn_state_pub_.clear();
         accel_.clear();
         steer_angle_vel_.clear();
         desired_speed_.clear();
@@ -1293,6 +1293,7 @@ public:
 
     void pub_ddn_state(ros::Time timestamp, size_t i)
     {
+        
         control_msgs::ddn_state ddn_state;
         ddn_state.x = state_[i].x;
         ddn_state.y = state_[i].y;
