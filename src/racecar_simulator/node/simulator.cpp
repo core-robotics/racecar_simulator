@@ -685,7 +685,7 @@ public:
     void clearvector()
     {
         state_.clear();
-
+        // ddn_state_pub_.clear();
         accel_.clear();
         steer_angle_vel_.clear();
         desired_speed_.clear();
