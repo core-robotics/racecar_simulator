@@ -5,4 +5,4 @@ float64 vx
 float64 vy
 float64 omega
 float64 steer
-folat64 throttle
+float64 throttle
