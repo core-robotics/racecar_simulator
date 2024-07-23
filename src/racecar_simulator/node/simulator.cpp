@@ -715,10 +715,7 @@ public:
             if (is_collision_)
                 collision_pub_.publish(is_collision);
             std::cout << "collision count: " << collision_count_++ << "\n\n";
-            // if (is_collision_ && restart_mode_)
-            // {
-            //     RestartSimulation();
-            // }
+
         }
 
 
@@ -776,21 +773,6 @@ public:
         return rc;
     }
 
-    // void first_ttc_actions()
-    // {
-    //     for (int i = 0; i < obj_num_; i++)
-    //     {
-    //         state_[i].velocity = 0.0;
-    //         state_[i].angular_velocity = 0.0;
-    //         state_[i].slip_angle = 0.0;
-    //         state_[i].steer_angle = 0.0;
-    //         steer_angle_vel_[i] = 0.0;
-    //         accel_[i] = 0.0;
-    //         desired_speed_[i] = 0.0;
-    //         desired_steer_ang_[i] = 0.0;
-    //     }
-    //     // completely stop vehicle
-    // }
 
     void set_accel(double accel, int i) { accel_[i] = std::min(std::max(accel, -max_accel_), max_accel_); }
 
@@ -847,7 +829,6 @@ public:
 
         return steer_vel;
     }
-
    
     void obs_callback(const geometry_msgs::PointStamped &msg)
     {
@@ -858,7 +839,6 @@ public:
         static_obs_idx.push_back(ind);
         add_obs(ind);
     }
-
 
     void pose_callback(const geometry_msgs::PoseStampedConstPtr &msg, int i)
     {
@@ -956,9 +936,6 @@ public:
         scan_simulator_.set_map(map, height, width, resolution, origin, map_free_threshold);
         map_exists = true;
     }
-
-    /// ---------------------- PUBLISHING HELPER FUNCTIONS
-    /// ----------------------
 
     void pub_pose_transform(ros::Time timestamp, size_t i)
     {
