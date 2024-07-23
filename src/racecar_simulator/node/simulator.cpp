@@ -259,7 +259,7 @@ private:
     int model_type_;
     int collision_count_;
     std::vector<bool> obj_collision_;
-    bool random_pose_;
+    // bool random_pose_;
     std::vector<geometry_msgs::PointStamped> global_path_;
     std::string control_mode_;
 
@@ -333,7 +333,7 @@ public:
 
         // Get obstacle size parameter
         n.getParam("obstacle_size", obstacle_size);
-        n.getParam("random_pose", random_pose_);
+        // n.getParam("random_pose", random_pose_);
         n.getParam("control_mode", control_mode_);
 
         // synchoronized mode
@@ -363,69 +363,69 @@ public:
         // integrator(update_pose_rate, json_paths);
         is_collision_ = false;
         collision_count_ = 0;
-        std::vector<geometry_msgs::PointStamped> random_pose_array;
-        if (random_pose_)
-        {
-            std::ifstream read_file;
-            std::string waypoint_file;
-            n.getParam("/waypoint_file", waypoint_file);
-            std::cout << "waypoint file : " << waypoint_file << std::endl;
-            read_file.open(waypoint_file.c_str());
+        // std::vector<geometry_msgs::PointStamped> random_pose_array;
+        // if (random_pose_)
+        // {
+        //     std::ifstream read_file;
+        //     std::string waypoint_file;
+        //     n.getParam("/waypoint_file", waypoint_file);
+        //     std::cout << "waypoint file : " << waypoint_file << std::endl;
+        //     read_file.open(waypoint_file.c_str());
 
-            if (read_file.is_open())
-            {
-                while (!read_file.eof())
-                {
-                    std::string line;
-                    geometry_msgs::PointStamped pos;
+        //     if (read_file.is_open())
+        //     {
+        //         while (!read_file.eof())
+        //         {
+        //             std::string line;
+        //             geometry_msgs::PointStamped pos;
 
-                    std::string buffer;
-                    std::vector<std::string> res;
+        //             std::string buffer;
+        //             std::vector<std::string> res;
 
-                    getline(read_file, line);
-                    if (line.empty())
-                    {
-                        continue;
-                    }
+        //             getline(read_file, line);
+        //             if (line.empty())
+        //             {
+        //                 continue;
+        //             }
 
-                    std::istringstream iss(line);
+        //             std::istringstream iss(line);
 
-                    while (getline(iss, buffer, ','))
-                    {
-                        res.push_back(buffer);
-                    }
+        //             while (getline(iss, buffer, ','))
+        //             {
+        //                 res.push_back(buffer);
+        //             }
 
-                    pos.point.x = std::stof(res[0]);
-                    pos.point.y = std::stof(res[1]);
+        //             pos.point.x = std::stof(res[0]);
+        //             pos.point.y = std::stof(res[1]);
 
-                    global_path_.push_back(pos);
-                }
-            }
-            computeYaw(global_path_);
-            std::cout << "waypoint size for random pose :" << global_path_.size() << std::endl;
-            random_pose_array = sampleWithoutReplacement(global_path_, obj_num_);
-        }
+        //             global_path_.push_back(pos);
+        //         }
+        //     }
+        //     computeYaw(global_path_);
+        //     std::cout << "waypoint size for random pose :" << global_path_.size() << std::endl;
+        //     random_pose_array = sampleWithoutReplacement(global_path_, obj_num_);
+        // }
 
         std::random_device rd;
         std::mt19937 gen(rd());
         // Initialize car state and driving commands
         for (int i = 0; i < obj_num_; i++)
         {
-            if (random_pose_)
-            {
-                CarState state = {
-                    .x = random_pose_array[i].point.x,
-                    .y = random_pose_array[i].point.y,
-                    .theta = random_pose_array[i].point.z,
-                    .velocity = 0,
-                    .steer_angle = 0.0,
-                    .angular_velocity = 0.0,
-                    .slip_angle = 0.0,
-                };
-                state_.push_back(state);
-            }
-            else
-            {
+            // if (random_pose_)
+            // {
+            //     CarState state = {
+            //         .x = random_pose_array[i].point.x,
+            //         .y = random_pose_array[i].point.y,
+            //         .theta = random_pose_array[i].point.z,
+            //         .velocity = 0,
+            //         .steer_angle = 0.0,
+            //         .angular_velocity = 0.0,
+            //         .slip_angle = 0.0,
+            //     };
+            //     state_.push_back(state);
+            // }
+            // else
+            // {
                 CarState state = {
                     .x = i,
                     .y = i,
@@ -436,7 +436,7 @@ public:
                     .slip_angle = 0.0,
                 };
                 state_.push_back(state);
-            }
+            // }
 
             accel_.push_back(0.0);
             steer_angle_vel_.push_back(0.0);
@@ -627,7 +627,7 @@ public:
 
         if (synchronized_mode_)
         {
-            sleep(3.);
+            // sleep(3.);
             RestartSimulation();
             ros::Time timestamp = ros::Time::now();
 
@@ -720,14 +720,14 @@ public:
         std::vector<geometry_msgs::PointStamped> random_pose_array;
         std::vector<geometry_msgs::PointStamped> fixed_pose_array;
         std::vector<geometry_msgs::PointStamped> randomized_path;
-        if (random_pose_)
-        {
-            randomized_path = createRandomizedPath(global_path_);
-            random_pose_array = sampleWithoutReplacement(randomized_path, obj_num_);
-        }
+        // if (random_pose_)
+        // {
+        //     randomized_path = createRandomizedPath(global_path_);
+        //     random_pose_array = sampleWithoutReplacement(randomized_path, obj_num_);
+        // }
 
-        else
-        {
+        // else
+        // {
             geometry_msgs::PointStamped msg;
 
             msg.point.x = 0.484;
@@ -751,26 +751,26 @@ public:
 
             // the number of fixed pose should be same with obj_num_
             assert(fixed_pose_array.size() == obj_num_);
-        }
+        // }
 
         // Initialize car state and driving commands
         for (int i = 0; i < obj_num_; i++)
         {
-            if (random_pose_)
-            {
-                CarState state = {
-                    .x = random_pose_array[i].point.x,
-                    .y = random_pose_array[i].point.y,
-                    .theta = random_pose_array[i].point.z,
-                    .velocity = 0,
-                    .steer_angle = 0.0,
-                    .angular_velocity = 0.0,
-                    .slip_angle = 0.0,
-                };
-                state_.push_back(state);
-            }
-            else
-            {
+            // if (random_pose_)
+            // {
+            //     CarState state = {
+            //         .x = random_pose_array[i].point.x,
+            //         .y = random_pose_array[i].point.y,
+            //         .theta = random_pose_array[i].point.z,
+            //         .velocity = 0,
+            //         .steer_angle = 0.0,
+            //         .angular_velocity = 0.0,
+            //         .slip_angle = 0.0,
+            //     };
+            //     state_.push_back(state);
+            // }
+            // else
+            // {
                 CarState state = {
                     .x = fixed_pose_array[i].point.x,
                     .y = fixed_pose_array[i].point.y,
@@ -781,7 +781,7 @@ public:
                     .slip_angle = 0.0,
                 };
                 state_.push_back(state);
-            }
+            // }
 
             accel_.push_back(0.0);
             steer_angle_vel_.push_back(0.0);
