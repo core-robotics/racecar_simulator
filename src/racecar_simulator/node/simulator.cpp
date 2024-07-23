@@ -254,16 +254,16 @@ public:
         n.getParam("imu_orientation_std_dev", imu_orientation_std_dev_);
 
         n.getParam("model_type", model_type_);
-        std::string param_path;
-        std::string cost_path;
-        std::string bounds_path;
-        std::string track_path;
-        std::string normalization_path;
-        n.getParam("param_path", param_path);
-        n.getParam("cost_path", cost_path);
-        n.getParam("bounds_path", bounds_path);
-        n.getParam("track_path", track_path);
-        n.getParam("normalization_path", normalization_path);
+        // std::string param_path;
+        // std::string cost_path;
+        // std::string bounds_path;
+        // std::string track_path;
+        // std::string normalization_path;
+        // n.getParam("param_path", param_path);
+        // n.getParam("cost_path", cost_path);
+        // n.getParam("bounds_path", bounds_path);
+        // n.getParam("track_path", track_path);
+        // n.getParam("normalization_path", normalization_path);
         // n.getParam("json_paths", json_paths);
 
         // integrator(update_pose_rate, json_paths);
@@ -482,73 +482,8 @@ public:
         return acceleration;
     }
 
-    void RestartSimulation()
-    {
-        // sync_time_ = 0.0;
-        clearvector();
-        iter_ = 0;
-        for (size_t i = 0; i < obj_collision_.size(); i++)
-            obj_collision_[i] = false;
+   
 
-        std::vector<geometry_msgs::PointStamped> fixed_pose_array;
-        std::vector<geometry_msgs::PointStamped> randomized_path;
-
-        geometry_msgs::PointStamped msg;
-
-        msg.point.x = 0.484;
-        msg.point.y = -0.557;
-        msg.point.z = -1.203;
-
-        fixed_pose_array.push_back(msg);
-
-        // the number of fixed pose should be same with obj_num_
-        assert(fixed_pose_array.size() == obj_num_);
-
-        // Initialize car state and driving commands
-        for (int i = 0; i < obj_num_; i++)
-        {
-
-            CarState state = {
-                .x = fixed_pose_array[i].point.x,
-                .y = fixed_pose_array[i].point.y,
-                .theta = fixed_pose_array[i].point.z,
-                .velocity = 0,
-                .steer_angle = 0.0,
-                .angular_velocity = 0.0,
-                .slip_angle = 0.0,
-            };
-            state_.push_back(state);
-
-            accel_.push_back(0.0);
-            steer_angle_vel_.push_back(0.0);
-            desired_speed_.push_back(0.0);
-            desired_steer_ang_.push_back(0.0);
-            desired_accel_.push_back(0.0);
-        }
-    }
-
-    void UpdateObstaclePosition(int i)
-    {
-        for (size_t idx = 0; idx < obj_num_; idx++)
-        {
-            if (idx == i)
-                continue;
-            double x = state_[idx].x;
-            double y = state_[idx].y;
-            std::vector<int> rc = coord_2_cell_rc(x, y);
-            // int ind = rc_2_ind(rc[0], rc[1]);
-            // std::vector<int> rc = ind_2_rc(ind);
-            int current_r = rc[0];
-            int current_c = rc[1];
-            int current_ind = rc_2_ind(current_r, current_c);
-            // current_map_.data[current_ind] = 100;
-            scan_simulator_.addOccupancyGrid(current_ind,
-                                             0); // 0 : occupied , 99999 : Free
-        }
-        scan_simulator_.updateDistance();
-
-        
-    }
 
     void ObservationCallback(const ackermann_msgs::AckermannDriveStampedConstPtr &msg)
     {
@@ -614,10 +549,7 @@ public:
                 scan_pose.y = state_[i].y + scan_distance_to_base_link_ * std::sin(state_[i].theta);
                 scan_pose.theta = state_[i].theta;
 
-                getConerPoint(i);
-
-                // Update the oppenent vehicle pose to include in scan
-                // UpdateObstaclePosition(i);
+                
 
                 // Compute the scan from the lidar
                 std::vector<double> scan = scan_simulator_.scan(scan_pose); // scan : distance from lidar to obstacle
@@ -658,25 +590,7 @@ public:
             is_collision.data = is_collision_;
             if (is_collision_)
                 collision_pub_.publish(is_collision);
-            // if (is_collision_) {
-            //     sleep(2.);
-            //     RestartSimulation();
-            //     ros::Time timestamp0 = ros::Time::now();
-
-            //     for (size_t i = 0; i < obj_num_; i++) {
-            //         pub_pose_transform(timestamp0, i);
-
-            //         /// Publish the steering angle as a transformation so the
-            //         /// wheels
-            //         pub_steer_ang_transform(timestamp0, i);
-
-            //         // Make an odom message as well and publish it
-            //         pub_odom(timestamp0, i);
-
-            //         // TODO: make and publish IMU message
-            //         pub_imu(timestamp0, i);
-            //     }
-            // }
+           
         }
     }
 
@@ -749,7 +663,7 @@ public:
                 scan_pose.y = state_[i].y + scan_distance_to_base_link_ * std::sin(state_[i].theta);
                 scan_pose.theta = state_[i].theta;
 
-                getConerPoint(i);
+                // getConerPoint(i);
 
                 // Update the oppenent vehicle pose to include in scan
                 // UpdateObstaclePosition(i);
@@ -801,10 +715,10 @@ public:
             if (is_collision_)
                 collision_pub_.publish(is_collision);
             std::cout << "collision count: " << collision_count_++ << "\n\n";
-            if (is_collision_ && restart_mode_)
-            {
-                RestartSimulation();
-            }
+            // if (is_collision_ && restart_mode_)
+            // {
+            //     RestartSimulation();
+            // }
         }
 
 
@@ -841,37 +755,6 @@ public:
         ddn_state_pub_[i].publish(ddn_state);
     }
 
-    /**
-     * @brief Get the Coner Point object
-     *
-     * @param i : index of vehicle
-     */
-    void getConerPoint(int i)
-    {
-        std::vector<geometry_msgs::Point> corner_pts;
-        geometry_msgs::Point p1, p2, p3, p4;
-
-        p1.x = state_[i].x + params_.wheelbase / 2.0 * cos(state_[i].theta) - width_ / 2.0 * sin(state_[i].theta);
-        p1.y = state_[i].y + params_.wheelbase / 2.0 * sin(state_[i].theta) + width_ / 2.0 * cos(state_[i].theta);
-
-        p2.x = state_[i].x + params_.wheelbase / 2.0 * cos(state_[i].theta) + width_ / 2.0 * sin(state_[i].theta);
-        p2.y = state_[i].y + params_.wheelbase / 2.0 * sin(state_[i].theta) - width_ / 2.0 * cos(state_[i].theta);
-
-        p3.x = state_[i].x - params_.wheelbase / 2.0 * cos(state_[i].theta) + width_ / 2.0 * sin(state_[i].theta);
-        p3.y = state_[i].y - params_.wheelbase / 2.0 * sin(state_[i].theta) - width_ / 2.0 * cos(state_[i].theta);
-
-        p4.x = state_[i].x - params_.wheelbase / 2.0 * cos(state_[i].theta) - width_ / 2.0 * sin(state_[i].theta);
-        p4.y = state_[i].y - params_.wheelbase / 2.0 * sin(state_[i].theta) + width_ / 2.0 * cos(state_[i].theta);
-
-        corner_pts.push_back(p1);
-        corner_pts.push_back(p2);
-        corner_pts.push_back(p3);
-        corner_pts.push_back(p4);
-
-        obs_corner_pts_[i] = corner_pts;
-    }
-
-    /// ---------------------- GENERAL HELPER FUNCTIONS ----------------------
 
     std::vector<int> ind_2_rc(int ind)
     {
@@ -893,21 +776,21 @@ public:
         return rc;
     }
 
-    void first_ttc_actions()
-    {
-        for (int i = 0; i < obj_num_; i++)
-        {
-            state_[i].velocity = 0.0;
-            state_[i].angular_velocity = 0.0;
-            state_[i].slip_angle = 0.0;
-            state_[i].steer_angle = 0.0;
-            steer_angle_vel_[i] = 0.0;
-            accel_[i] = 0.0;
-            desired_speed_[i] = 0.0;
-            desired_steer_ang_[i] = 0.0;
-        }
-        // completely stop vehicle
-    }
+    // void first_ttc_actions()
+    // {
+    //     for (int i = 0; i < obj_num_; i++)
+    //     {
+    //         state_[i].velocity = 0.0;
+    //         state_[i].angular_velocity = 0.0;
+    //         state_[i].slip_angle = 0.0;
+    //         state_[i].steer_angle = 0.0;
+    //         steer_angle_vel_[i] = 0.0;
+    //         accel_[i] = 0.0;
+    //         desired_speed_[i] = 0.0;
+    //         desired_steer_ang_[i] = 0.0;
+    //     }
+    //     // completely stop vehicle
+    // }
 
     void set_accel(double accel, int i) { accel_[i] = std::min(std::max(accel, -max_accel_), max_accel_); }
 
@@ -965,36 +848,7 @@ public:
         return steer_vel;
     }
 
-    // void compute_accel(double desired_velocity, size_t i) {
-    //     // get difference between current and desired
-    //     double dif = (desired_velocity - state_[i].velocity);
-
-    //     if (state_[i].velocity > 0) {
-    //         if (dif > 0) {
-    //             // accelerate
-    //             double kp = 2.0 * max_accel_ / max_speed_;
-    //             set_accel(kp * dif);
-    //         } else {
-    //             // brake
-    //             accel_[i] = -max_decel_;
-    //         }
-    //     } else {
-    //         if (dif > 0) {
-    //             // brake
-    //             accel_[i] = max_decel_;
-
-    //         } else {
-    //             // accelerate
-    //             double kp = 2.0 * max_accel_ / max_speed_;
-    //             set_accel(kp * dif);
-    //         }
-    //     }
-    // }
-
-    /// ---------------------- CALLBACK FUNCTIONS ----------------------
-    /**
-     * rviz clicked point callback
-     */
+   
     void obs_callback(const geometry_msgs::PointStamped &msg)
     {
         double x = msg.point.x;
@@ -1042,7 +896,6 @@ public:
         pose_callback(shared_pose, 1);
         state_[1].velocity = 0.0;
 
-        // pose_callback(&temp_pose, i);
     }
 
     void drive_callback(const ackermann_msgs::AckermannDriveStampedConstPtr &msg, size_t i)
