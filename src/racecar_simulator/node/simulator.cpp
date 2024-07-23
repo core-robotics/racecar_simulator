@@ -29,7 +29,6 @@
 #include <std_msgs/Float32MultiArray.h>
 
 using namespace racecar_simulator;
-// using namespace mpcc;
 
 enum ModelType
 {
@@ -37,86 +36,6 @@ enum ModelType
     PAJEKAMODEL
 };
 
-// std::vector<geometry_msgs::PointStamped> sampleWithoutReplacement(const std::vector<geometry_msgs::PointStamped> &data, int N)
-// {
-//     if (N > data.size())
-//     {
-//         throw std::runtime_error("N is greater than the size of the vector.");
-//     }
-
-//     std::vector<geometry_msgs::PointStamped> shuffledData = data; // 원본 데이터 복사
-//     std::random_device rd;
-//     std::mt19937 g(rd());
-//     std::shuffle(shuffledData.begin(), shuffledData.end(), g); // 데이터 섞기
-
-//     return std::vector<geometry_msgs::PointStamped>(shuffledData.begin(),
-//                                                     shuffledData.begin() + N); // 앞에서부터 N개의 원소 선택
-// }
-
-// void computeYaw(std::vector<geometry_msgs::PointStamped> &global_path)
-// {
-
-//     for (size_t i = 0; i < global_path.size(); ++i)
-//     {
-//         // 다음 점을 가져옵니다. 마지막 점의 경우 첫 번째 점을 다음 점으로
-//         // 사용합니다.
-//         const geometry_msgs::Point &current = global_path[i].point;
-//         const geometry_msgs::Point &next = (i == global_path.size() - 1) ? global_path[0].point : global_path[i + 1].point;
-
-//         // 두 점 사이의 방향을 계산합니다.
-//         double dx = next.x - current.x;
-//         double dy = next.y - current.y;
-
-//         // atan2를 사용하여 yaw 값을 계산합니다.
-//         double yaw = atan2(dy, dx);
-
-//         global_path[i].point.z = yaw;
-//     }
-// }
-
-// std::vector<geometry_msgs::PointStamped> createRandomizedPath(const std::vector<geometry_msgs::PointStamped> &global_path)
-// {
-//     std::vector<geometry_msgs::PointStamped> randomized_path;
-//     randomized_path.reserve(global_path.size());
-
-//     std::random_device rd;
-//     std::mt19937 gen(rd());
-//     std::uniform_real_distribution<> dis(-0.4,
-//                                          0.4); // -0.25 ~ 0.25 사이의 랜덤 값
-
-//     for (size_t i = 0; i < global_path.size(); ++i)
-//     {
-//         // 탄젠트(접선) 벡터 계산: 여기서는 간단한 예시로 다음 포인트 방향 사용
-//         // 실제로는 스플라인 등을 이용하여 정확한 탄젠트 벡터를 계산해야 함
-//         geometry_msgs::Vector3 tangent;
-//         if (i < global_path.size() - 1)
-//         {
-//             tangent.x = global_path[i + 1].point.x - global_path[i].point.x;
-//             tangent.y = global_path[i + 1].point.y - global_path[i].point.y;
-//         }
-//         else
-//         {
-//             tangent.x = global_path[i].point.x - global_path[i - 1].point.x;
-//             tangent.y = global_path[i].point.y - global_path[i - 1].point.y;
-//         }
-
-//         // 노멀(수직) 벡터 계산
-//         geometry_msgs::Vector3 normal;
-//         normal.x = -tangent.y;
-//         normal.y = tangent.x;
-//         normal.z = 0;
-
-//         // 랜덤 오프셋 생성 및 적용
-//         double randomOffset = dis(gen);
-//         geometry_msgs::PointStamped new_point = global_path[i];
-//         new_point.point.x += normal.x * randomOffset;
-//         new_point.point.y += normal.y * randomOffset;
-
-//         randomized_path.push_back(new_point);
-//     }
-
-//     return randomized_path;
-// }
 class RacecarSimulator
 {
 private:
@@ -124,7 +43,7 @@ private:
     ros::NodeHandle n;
     int obj_num_;
     // The transformation frames used
-    std::string map_frame, base_frame, scan_frame,imu_frame;
+    std::string map_frame, base_frame, scan_frame, imu_frame;
 
     // obstacle states (1D index) and parameters
     std::vector<int> static_obs_idx;
@@ -139,7 +58,7 @@ private:
 
     // The car state and parameters
     std::vector<CarState> state_;
-    
+
     //  std::vector<std::shared_ptr<IState>> states_;
     double previous_seconds;
     double init_time_;
@@ -180,7 +99,7 @@ private:
 
     // synchronized mode
     // double sync_time_step_; // in seconds, TODO : synchronize with MPC time
-                            
+
     bool synchronized_mode_;
     // double sync_time_;
     ros::ServiceServer reset_service_;
@@ -193,7 +112,7 @@ private:
     std::vector<ros::Publisher> odom_pub_;
     std::vector<ros::Publisher> imu_pub_;
     std::vector<ros::Publisher> noise_pose_pub_;
-    
+
     // publisher for map with obstacles
     ros::Publisher map_pub_;
 
@@ -202,8 +121,6 @@ private:
 
     // ros time publisher
     ros::Publisher time_pub_;
-
-    
 
     // keep an original map for obstacles
     nav_msgs::OccupancyGrid original_map_;
@@ -287,7 +204,7 @@ public:
         n.getParam("imu_frame", imu_frame);
 
         // Fetch the car parameters
-       
+
         n.getParam("obj_num", obj_num_);
         n.getParam("wheelbase", params_.wheelbase);
         n.getParam("update_pose_rate", update_pose_rate);
@@ -352,80 +269,20 @@ public:
         // integrator(update_pose_rate, json_paths);
         is_collision_ = false;
         collision_count_ = 0;
-        // std::vector<geometry_msgs::PointStamped> random_pose_array;
-        // if (random_pose_)
-        // {
-        //     std::ifstream read_file;
-        //     std::string waypoint_file;
-        //     n.getParam("/waypoint_file", waypoint_file);
-        //     std::cout << "waypoint file : " << waypoint_file << std::endl;
-        //     read_file.open(waypoint_file.c_str());
 
-        //     if (read_file.is_open())
-        //     {
-        //         while (!read_file.eof())
-        //         {
-        //             std::string line;
-        //             geometry_msgs::PointStamped pos;
-
-        //             std::string buffer;
-        //             std::vector<std::string> res;
-
-        //             getline(read_file, line);
-        //             if (line.empty())
-        //             {
-        //                 continue;
-        //             }
-
-        //             std::istringstream iss(line);
-
-        //             while (getline(iss, buffer, ','))
-        //             {
-        //                 res.push_back(buffer);
-        //             }
-
-        //             pos.point.x = std::stof(res[0]);
-        //             pos.point.y = std::stof(res[1]);
-
-        //             global_path_.push_back(pos);
-        //         }
-        //     }
-        //     computeYaw(global_path_);
-        //     std::cout << "waypoint size for random pose :" << global_path_.size() << std::endl;
-        //     random_pose_array = sampleWithoutReplacement(global_path_, obj_num_);
-        // }
-
-        // std::random_device rd;
-        // std::mt19937 gen(rd());
-        // Initialize car state and driving commands
         for (int i = 0; i < obj_num_; i++)
         {
-            // if (random_pose_)
-            // {
-            //     CarState state = {
-            //         .x = random_pose_array[i].point.x,
-            //         .y = random_pose_array[i].point.y,
-            //         .theta = random_pose_array[i].point.z,
-            //         .velocity = 0,
-            //         .steer_angle = 0.0,
-            //         .angular_velocity = 0.0,
-            //         .slip_angle = 0.0,
-            //     };
-            //     state_.push_back(state);
-            // }
-            // else
-            // {
-                CarState state = {
-                    .x = double(i),
-                    .y = double(i),
-                    .theta = 0,
-                    .velocity = 0,
-                    .steer_angle = 0.0,
-                    .angular_velocity = 0.0,
-                    .slip_angle = 0.0,
-                };
-                state_.push_back(state);
-            // }
+
+            CarState state = {
+                .x = double(i),
+                .y = double(i),
+                .theta = 0,
+                .velocity = 0,
+                .steer_angle = 0.0,
+                .angular_velocity = 0.0,
+                .slip_angle = 0.0,
+            };
+            state_.push_back(state);
 
             accel_.push_back(0.0);
             steer_angle_vel_.push_back(0.0);
@@ -442,61 +299,26 @@ public:
         // Make a publisher for publishing map with obstacles
         map_pub_ = n.advertise<nav_msgs::OccupancyGrid>("/map", 1);
 
-        // publish the original
-        // synchronized_mode_ = true;
-        // if (synchronized_mode_)
-        // {
-            // sync_time_ = 0.;
+        update_pose_timer = n.createTimer(ros::Duration(update_pose_rate), &RacecarSimulator::update_pose, this);
 
-            // observation_server_ = n.advertiseService("/sync_control_service", &RacecarSimulator::SyncControlServer, this);
-            // observation_sub_ =
-            //     n.subscribe(drive_topic + std::to_string(0), 1,
-            //                 &RacecarSimulator::ObservationCallback, this);
-            // observation_server_ = n.advertiseService(
-            //     "/observation_service",
-            //     &RacecarSimulator::ObservationCallback, this);
-        // }
-        // else
-        // {
-            // Start a timer to output the pose
-            update_pose_timer = n.createTimer(ros::Duration(update_pose_rate), &RacecarSimulator::update_pose, this);
-        // }
-
-        // pose_rviz_sub_ =
-        // n.subscribe<geometry_msgs::PoseWithCovarianceStamped>(pose_rviz_topic,
-        // 1, &RacecarSimulator::pose_rviz_callback, this);
         pose_rviz_sub_ = n.subscribe(pose_rviz_topic, 1, &RacecarSimulator::pose_rviz_callback,
                                      this); // ego vehicle pose
         opp_pose_rviz_sub_ = n.subscribe(opp_pose_rviz_topic, 1, &RacecarSimulator::opp_pose_rviz_callback,
                                          this); // opponent vehicle pose
-
-        // reset_service_ = n.advertiseService("/reset_service", &RacecarSimulator::reset_server, this);
 
         // Start a subscriber to listen to drive commands
         for (int i = 0; i < obj_num_; i++)
         {
             ros::Subscriber drive_sub, pose_sub;
             ros::Publisher scan_pub, odom_pub, imu_pub, state_pub, ddn_state_pub, noise_pose_pub;
-            // ros::ServiceClient client;
-            if (synchronized_mode_)
-            {
-                if (i != 0)
-                {
-                    drive_sub = n.subscribe<ackermann_msgs::AckermannDriveStamped>(
-                        drive_topic + std::to_string(i), 1,
-                        boost::bind(&RacecarSimulator::drive_callback, this, _1, i)); // TODO : now we can
-                                                                                      // syncrhonize only to 0 agent
-                }
-            }
-            else
-            {
-                init_time_ = ros::Time::now().toSec();
-                drive_sub = n.subscribe<ackermann_msgs::AckermannDriveStamped>(drive_topic + std::to_string(i), 1,
-                                                                               boost::bind(&RacecarSimulator::drive_callback, this, _1, i));
-            }
+
+            init_time_ = ros::Time::now().toSec();
+            drive_sub = n.subscribe<ackermann_msgs::AckermannDriveStamped>(drive_topic + std::to_string(i), 1,
+                                                                           boost::bind(&RacecarSimulator::drive_callback, this, _1, i));
+
             state_pub = n.advertise<control_msgs::CarState>(state_topic + std::to_string(i), 1);
 
-            ddn_state_pub=n.advertise<control_msgs::ddn_state>(ddn_state_topic + std::to_string(i), 1);
+            ddn_state_pub = n.advertise<control_msgs::ddn_state>(ddn_state_topic + std::to_string(i), 1);
 
             pose_sub = n.subscribe<geometry_msgs::PoseStamped>(pose_topic + std::to_string(i), 1,
                                                                boost::bind(&RacecarSimulator::pose_callback, this, _1, i));
@@ -518,12 +340,6 @@ public:
             collision_pub_ = n.advertise<std_msgs::Bool>("/collision", 1);
             time_pub_ = n.advertise<visualization_msgs::Marker>("visualization_marker", 1);
 
-            // std::string service_name = "/collision_service" +
-            // std::to_string(i); fprintf(stderr, "%s\n", service_name.c_str());
-            // client = n.serviceClient<collision_msgs::collision>(
-            //     service_name.c_str());
-
-            // client_.push_back(client);
             drive_sub_.push_back(drive_sub);
             state_pub_.push_back(state_pub);
             ddn_state_pub_.push_back(ddn_state_pub);
@@ -541,14 +357,6 @@ public:
 
         // obstacle subscriber
         obs_sub = n.subscribe("/clicked_point", 1, &RacecarSimulator::obs_callback, this);
-
-        // reset_sub =
-        //     n.subscribe("/RL_reset", 1, &RacecarSimulator::reset_callback,
-        //     this);
-
-        // get collision safety margin
-        // n.getParam("coll_threshold", thresh);
-        // n.getParam("ttc_threshold", ttc_threshold);
 
         scan_ang_incr = scan_simulator_.get_angle_increment();
         // TODO : if the vehicle model of multiple vehicles is different,
@@ -581,11 +389,7 @@ public:
         // create button for clearing obstacles
         visualization_msgs::InteractiveMarker clear_obs_button;
         clear_obs_button.header.frame_id = "map";
-        // clear_obs_button.pose.position.x =
-        // origin_x+(1/3)*map_width*map_resolution;
-        // clear_obs_button.pose.position.y =
-        // origin_y+(1/3)*map_height*map_resolution;
-        // TODO: find better positioning of buttons
+
         clear_obs_button.pose.position.x = 0;
         clear_obs_button.pose.position.y = -5;
         clear_obs_button.scale = 1;
@@ -613,27 +417,6 @@ public:
         im_server.setCallback(clear_obs_button.name, boost::bind(&RacecarSimulator::clear_obstacles, this, _1));
 
         im_server.applyChanges();
-
-        // if (synchronized_mode_)
-        // {
-        //     // sleep(3.);
-        //     RestartSimulation();
-        //     ros::Time timestamp = ros::Time::now();
-
-        //     for (int i = 0; i < obj_num_; i++)
-        //     {
-        //         pub_pose_transform(timestamp, i);
-
-        //         /// Publish the steering angle as a transformation so the wheels
-        //         pub_steer_ang_transform(timestamp, i);
-
-        //         // Make an odom message as well and publish it
-        //         pub_odom(timestamp, i);
-
-        //         // TODO: make and publish IMU message
-        //         pub_imu(timestamp, i);
-        //     }
-        // }
 
         ROS_INFO("Simulator constructed.");
     }
@@ -706,71 +489,35 @@ public:
         iter_ = 0;
         for (size_t i = 0; i < obj_collision_.size(); i++)
             obj_collision_[i] = false;
-        // std::vector<geometry_msgs::PointStamped> random_pose_array;
+
         std::vector<geometry_msgs::PointStamped> fixed_pose_array;
         std::vector<geometry_msgs::PointStamped> randomized_path;
-        // if (random_pose_)
-        // {
-        //     randomized_path = createRandomizedPath(global_path_);
-        //     random_pose_array = sampleWithoutReplacement(randomized_path, obj_num_);
-        // }
 
-        // else
-        // {
-            geometry_msgs::PointStamped msg;
+        geometry_msgs::PointStamped msg;
 
-            msg.point.x = 0.484;
-            msg.point.y = -0.557;
-            msg.point.z = -1.203;
+        msg.point.x = 0.484;
+        msg.point.y = -0.557;
+        msg.point.z = -1.203;
 
-            // msg.point.x = 0.260;
-            // msg.point.y = -0.212;
-            // msg.point.z = -0.671;
-            fixed_pose_array.push_back(msg);
+        fixed_pose_array.push_back(msg);
 
-            // msg.point.x = 5.656;
-            // msg.point.y = -3.4;
-            // msg.point.z = 1.942;
-            // fixed_pose_array.push_back(msg);
-
-            // msg.point.x = -3.261;
-            // msg.point.y = -12.916;
-            // msg.point.z = 0.288;
-            // fixed_pose_array.push_back(msg);
-
-            // the number of fixed pose should be same with obj_num_
-            assert(fixed_pose_array.size() == obj_num_);
-        // }
+        // the number of fixed pose should be same with obj_num_
+        assert(fixed_pose_array.size() == obj_num_);
 
         // Initialize car state and driving commands
         for (int i = 0; i < obj_num_; i++)
         {
-            // if (random_pose_)
-            // {
-            //     CarState state = {
-            //         .x = random_pose_array[i].point.x,
-            //         .y = random_pose_array[i].point.y,
-            //         .theta = random_pose_array[i].point.z,
-            //         .velocity = 0,
-            //         .steer_angle = 0.0,
-            //         .angular_velocity = 0.0,
-            //         .slip_angle = 0.0,
-            //     };
-            //     state_.push_back(state);
-            // }
-            // else
-            // {
-                CarState state = {
-                    .x = fixed_pose_array[i].point.x,
-                    .y = fixed_pose_array[i].point.y,
-                    .theta = fixed_pose_array[i].point.z,
-                    .velocity = 0,
-                    .steer_angle = 0.0,
-                    .angular_velocity = 0.0,
-                    .slip_angle = 0.0,
-                };
-                state_.push_back(state);
-            // }
+
+            CarState state = {
+                .x = fixed_pose_array[i].point.x,
+                .y = fixed_pose_array[i].point.y,
+                .theta = fixed_pose_array[i].point.z,
+                .velocity = 0,
+                .steer_angle = 0.0,
+                .angular_velocity = 0.0,
+                .slip_angle = 0.0,
+            };
+            state_.push_back(state);
 
             accel_.push_back(0.0);
             steer_angle_vel_.push_back(0.0);
@@ -800,165 +547,8 @@ public:
         }
         scan_simulator_.updateDistance();
 
-        // double x = msg.point.x;
-        // double y = msg.point.y;
-        // std::vector<int> rc = coord_2_cell_rc(x, y);
-        // added_obs.push_back(ind);
-        // add_obs(ind);
+        
     }
-
-    // bool SyncControlServer(control_msgs::sync_control::Request &req, control_msgs::sync_control::Response &res)
-    // {
-    //     desired_accel_[0] = req.control_input.data[0];
-    //     desired_steer_ang_[0] = req.control_input.data[1];
-
-    //     // obs_corner_pts_.clear();
-    //     min_scan_distances_.clear();
-
-    //     // Update the pose
-    //     ros::Time timestamp = ros::Time::now();
-    //     // fprintf(stderr, "timestamp : %f\n", timestamp.toSec());
-    //     // simulate P controller
-    //     double current_seconds = timestamp.toSec();
-
-    //     for (int i = 0; i < obj_num_; i++)
-    //     {
-
-    //         if (control_mode_ == "v")
-    //         {
-    //             if (std::isnan(desired_speed_[i]))
-    //                 desired_speed_[i] = 0.0;
-    //             double accel = compute_accel(desired_speed_[i], i);
-    //             set_accel(desired_accel_[i], i);
-    //         }
-    //         else if (control_mode_ == "a")
-    //         {
-    //             if (std::isnan(desired_accel_[i]))
-    //                 desired_accel_[i] = 0.0;
-    //             set_accel(desired_accel_[i], i);
-    //         }
-    //         else
-    //             ROS_INFO("control mode error");
-    //         set_steer_angle_vel(compute_steer_vel(desired_steer_ang_[i], i), i);
-
-    //         if (!obj_collision_[i])
-    //         {
-
-    //             state_[i] = STKinematics::update(state_[i], accel_[i], steer_angle_vel_[i], params_, sync_time_step_);
-    //             state_[i].velocity = std::min(std::max(state_[i].velocity, -max_speed_), max_speed_);
-    //             state_[i].steer_angle = std::min(std::max(state_[i].steer_angle, -max_steering_angle_), max_steering_angle_);
-    //         }
-
-    //         // previous_seconds = current_seconds;
-
-    //         /// Publish the pose as a transformation
-    //         pub_pose_transform(timestamp, i);
-
-    //         /// Publish the steering angle as a transformation so the wheels
-    //         pub_steer_ang_transform(timestamp, i);
-
-    //         // Make an odom message as well and publish it
-    //         pub_odom(timestamp, i);
-
-    //         // TODO: make and publish IMU message
-    //         pub_imu(timestamp, i);
-
-    //         /// KEEP in sim
-    //         // If we have a map, perform a scan
-    //         if (map_exists)
-    //         {
-    //             // Get the pose of the lidar, given the pose of base link
-    //             // (base link is the center of the rear axle)
-    //             Pose2D scan_pose;
-    //             scan_pose.x = state_[i].x + scan_distance_to_base_link_ * std::cos(state_[i].theta);
-    //             scan_pose.y = state_[i].y + scan_distance_to_base_link_ * std::sin(state_[i].theta);
-    //             scan_pose.theta = state_[i].theta;
-
-    //             getConerPoint(i);
-
-    //             // Update the oppenent vehicle pose to include in scan
-    //             // UpdateObstaclePosition(i);
-
-    //             // Compute the scan from the lidar
-    //             std::vector<double> scan = scan_simulator_.scan(scan_pose); // scan : distance from lidar to obstacle
-
-    //             // Convert to float
-    //             std::vector<float> scan_float(scan.size());
-    //             for (size_t idx = 0; idx < scan.size(); idx++)
-    //                 scan_float[idx] = scan[idx];
-
-    //             // TTC Calculations are done here so the car can be halted in
-    //             // the simulator: to reset TTC
-    //             bool no_collision = true;
-    //             double min_scan = *std::min_element(scan_float.begin(), scan_float.end());
-    //             min_scan_distances_.push_back(min_scan);
-
-    //             // Publish the laser message
-    //             sensor_msgs::LaserScan scan_msg;
-    //             scan_msg.header.stamp = timestamp;
-    //             scan_msg.header.frame_id = scan_frame + std::to_string(i);
-    //             scan_msg.angle_min = -scan_simulator_.get_field_of_view() / 2.;
-    //             scan_msg.angle_max = scan_simulator_.get_field_of_view() / 2.;
-    //             scan_msg.angle_increment = scan_simulator_.get_angle_increment();
-    //             scan_msg.range_max = 100;
-    //             scan_msg.ranges = scan_float;
-    //             scan_msg.intensities = scan_float;
-    //             scan_pub_[i].publish(scan_msg);
-
-    //             // Publish a transformation between base link and laser
-    //             pub_laser_link_transform(timestamp, i);
-    //         }
-
-    //         control_msgs::CarState state;
-    //         state.x = state_[i].x;
-    //         state.y = state_[i].y;
-    //         state.theta = state_[i].theta;
-    //         state.velocity = state_[i].velocity;
-    //         state.steer_angle = state_[i].steer_angle;
-    //         state.angular_velocity = state_[i].angular_velocity;
-    //         state.slip_angle = state_[i].slip_angle;
-
-    //         res.state.push_back(state);
-    //     }
-    //     iter_++;
-    //     visualizeTimeInRviz(iter_ * sync_time_step_);
-
-    //     bool curr_collision = checkAllCollisions(obs_corner_pts_);
-    //     // double g = 9.81;
-    //     // double rear_val = g * params_.l_r - desired_accel_[0] * params_.h_cg;
-    //     // double front_val = g * params_.l_f + desired_steer_ang_[0] *
-    //     // params_.h_cg;
-
-    //     // double ay =
-    //     //     state_[0].velocity *
-    //     //     (params_.friction_coeff / (state_[0].velocity * (params_.l_r +
-    //     //     params_.l_f))) * (params_.cs_f * desired_steer_ang_[0] * rear_val
-    //     //     -
-    //     //      state_[0].slip_angle * (params_.cs_r * front_val + params_.cs_f
-    //     //      * rear_val) + (state_[0].angular_velocity / state_[0].velocity)
-    //     //      * (params_.cs_r * params_.l_r * front_val -
-    //     //                                      params_.cs_f * params_.l_f *
-    //     //                                      rear_val));
-    //     // if(isnan(ay))
-    //     //     ay = 0.0;
-    //     // if (fabs(ay) > g * params_.friction_coeff) {
-    //     //     curr_collision = true;
-    //     //     std::cout << " ay exceed limit \n"
-    //     //                 << " ay : " << ay << std::endl;
-    //     // }
-
-    //     res.collision = curr_collision;
-
-    //     if (curr_collision != is_collision_)
-    //     {
-    //         is_collision_ = curr_collision;
-    //         std_msgs::Bool is_collision;
-    //         is_collision.data = is_collision_;
-    //         if (is_collision_)
-    //             collision_pub_.publish(is_collision);
-    //     }
-    //     return true;
-    // }
 
     void ObservationCallback(const ackermann_msgs::AckermannDriveStampedConstPtr &msg)
     {
@@ -1175,30 +765,6 @@ public:
                 // TTC Calculations are done here so the car can be halted in
                 // the simulator: to reset TTC
                 bool no_collision = true;
-                // if (state_[i].velocity != 0) {
-                //     // scan_float minest value
-
-                //     for (size_t idx = 0; idx < scan_float.size(); idx++) {
-                //         // TTC calculations
-
-                //         // calculate projected velocity
-                //         double proj_velocity =
-                //             state_[i].velocity * cosines[idx];
-                //         double ttc = (scan_float[idx] - car_distances[idx]) /
-                //                      proj_velocity; // ???
-                //         // if it's small enough to count as a collision
-                //         if ((ttc < ttc_threshold) && (ttc >= 0.0)) {
-                //             // if (!TTC) {
-                //             //     first_ttc_actions();
-                //             // }
-
-                //             no_collision = false;
-                //             TTC = true;
-
-                //             ROS_INFO("Collision detected");
-                //         }
-                //     }
-                // }
                 double min_scan = *std::min_element(scan_float.begin(), scan_float.end());
                 min_scan_distances_.push_back(min_scan);
 
@@ -1223,7 +789,6 @@ public:
             }
         }
         previous_seconds = current_seconds;
-        
 
         visualizeTimeInRviz(current_seconds - init_time_);
 
@@ -1242,32 +807,12 @@ public:
             }
         }
 
-        // if (is_collision_) {
-        //     collision_msgs::collision srv;
-        //     srv.request.is_collision = is_collision_;
-        //     for (size_t k = 0; k < obj_num_; k++) {
-        //         if (!client_[k].call(srv)) {
-        //             fprintf(stderr,
-        //                     "Failed to call service collision_service\n");
-        //         }
-        //     }
-
-        //     RestartSimulation();
-        //     is_collision_ = false;
-        //     for (size_t k = 0; k < obj_num_; k++) {
-        //         if (!client_[k].call(srv)) {
-        //             fprintf(stderr, "Failed to call restart service\n");
-        //         }
-        //     }
-        // }
 
     } // end of update_pose
 
     void pub_state(ros::Time timestamp, size_t i)
     {
         control_msgs::CarState state;
-        // state.header.stamp = timestamp;
-        // state.header.frame_id = "state"
 
         state.x = state_[i].x;
         state.y = state_[i].y;
@@ -1282,21 +827,19 @@ public:
 
     void pub_ddn_state(ros::Time timestamp, size_t i)
     {
-        
+
         control_msgs::ddn_state ddn_state;
         ddn_state.x = state_[i].x;
         ddn_state.y = state_[i].y;
         ddn_state.phi = state_[i].theta;
-        ddn_state.vx= (state_[i].velocity)*cos(state_[i].slip_angle);
-        ddn_state.vy= (state_[i].velocity)*sin(state_[i].slip_angle);
+        ddn_state.vx = (state_[i].velocity) * cos(state_[i].slip_angle);
+        ddn_state.vy = (state_[i].velocity) * sin(state_[i].slip_angle);
         ddn_state.omega = state_[i].angular_velocity;
         ddn_state.steer = state_[i].steer_angle;
         ddn_state.throttle = accel_[i];
 
-
         ddn_state_pub_[i].publish(ddn_state);
     }
-
 
     /**
      * @brief Get the Coner Point object
@@ -1462,74 +1005,6 @@ public:
         add_obs(ind);
     }
 
-    // bool reset_server(control_msgs::reset::Request &req, control_msgs::reset::Response &res)
-    // {
-    //     fprintf(stderr, "reset callback \n");
-    //     // sleep(2.);
-    //     RestartSimulation();
-    //     ros::Time timestamp0 = ros::Time::now();
-
-    //     for (size_t i = 0; i < obj_num_; i++)
-    //     {
-    //         pub_pose_transform(timestamp0, i);
-
-    //         /// Publish the steering angle as a transformation so the
-    //         /// wheels
-    //         pub_steer_ang_transform(timestamp0, i);
-
-    //         // Make an odom message as well and publish it
-    //         pub_odom(timestamp0, i);
-
-    //         // TODO: make and publish IMU message
-    //         pub_imu(timestamp0, i);
-    //     }
-
-    //     for (size_t i = 0; i < obj_num_; i++)
-    //     {
-    //         control_msgs::CarState state;
-    //         state.x = state_[i].x;
-    //         state.y = state_[i].y;
-    //         state.theta = state_[i].theta;
-    //         state.velocity = state_[i].velocity;
-    //         state.steer_angle = state_[i].steer_angle;
-    //         state.angular_velocity = state_[i].angular_velocity;
-    //         state.slip_angle = state_[i].slip_angle;
-
-    //         res.state.push_back(state);
-    //     }
-
-    //     return true;
-    // }
-
-    // void reset_callback(const std_msgs::Bool &msg) {
-    //     std::cout<<(msg.data);
-    //     fprintf(stderr, "reset callback \n");
-    //     sleep(2.);
-    //     RestartSimulation();
-    //     ros::Time timestamp0 = ros::Time::now();
-
-    //     for (size_t i = 0; i < obj_num_; i++) {
-    //         pub_pose_transform(timestamp0, i);
-
-    //         /// Publish the steering angle as a transformation so the
-    //         /// wheels
-    //         pub_steer_ang_transform(timestamp0, i);
-
-    //         // Make an odom message as well and publish it
-    //         pub_odom(timestamp0, i);
-
-    //         // TODO: make and publish IMU message
-    //         pub_imu(timestamp0, i);
-    //     }
-    // }
-
-    // void pose_callback(const geometry_msgs::PoseStamped &msg) {
-    //     state_[i].x = msg.pose.position.x;
-    //     state_[i].y = msg.pose.position.y;
-    //     geometry_msgs::Quaternion q = msg.pose.orientation;
-    //     tf2::Quaternion quat(q.x, q.y, q.z, q.w);
-    //     state_[i].theta = tf2::impl::getYaw(quat);
-    // }
 
     void pose_callback(const geometry_msgs::PoseStampedConstPtr &msg, int i)
     {
@@ -1762,7 +1237,7 @@ public:
         std::normal_distribution<double> accel_noise(0.0, imu_accel_std_dev_);
         std::normal_distribution<double> gyro_noise(0.0, imu_gyro_std_dev_);
         std::normal_distribution<double> orientation_noise(0.0, imu_orientation_std_dev_);
-        
+
         // static std::default_random_engine generator;
         if (noise_mode_)
         {
@@ -1793,12 +1268,12 @@ public:
         imu.header.stamp = timestamp_;
         imu.header.frame_id = base_frame + std::to_string(i);
 
-        imu.linear_acceleration.x = accel_[i] *cos(state_[i].slip_angle)-state_[i].velocity*state_[i].angular_velocity*sin(state_[i].slip_angle) + ax_noise;
-        imu.linear_acceleration.y = accel_[i] *sin(state_[i].slip_angle)+state_[i].velocity*state_[i].angular_velocity*cos(state_[i].slip_angle) + ay_noise;
+        imu.linear_acceleration.x = accel_[i] * cos(state_[i].slip_angle) - state_[i].velocity * state_[i].angular_velocity * sin(state_[i].slip_angle) + ax_noise;
+        imu.linear_acceleration.y = accel_[i] * sin(state_[i].slip_angle) + state_[i].velocity * state_[i].angular_velocity * cos(state_[i].slip_angle) + ay_noise;
         imu.linear_acceleration.z = az_noise;
         imu.angular_velocity.x = wx_noise;
         imu.angular_velocity.y = wy_noise;
-        imu.angular_velocity.z = state_[i].angular_velocity+wz_noise;
+        imu.angular_velocity.z = state_[i].angular_velocity + wz_noise;
         tf2::Quaternion quat;
         quat.setEuler(roll_noise, pitch_noise, state_[i].theta + yaw_noise);
         imu.orientation.x = quat.x();
@@ -1806,18 +1281,17 @@ public:
         imu.orientation.z = quat.z();
         imu.orientation.w = quat.w();
 
-        imu.linear_acceleration_covariance[0] = imu_accel_std_dev_*imu_accel_std_dev_;
-        imu.linear_acceleration_covariance[4] = imu_accel_std_dev_*imu_accel_std_dev_;
-        imu.linear_acceleration_covariance[8] = imu_accel_std_dev_*imu_accel_std_dev_;
+        imu.linear_acceleration_covariance[0] = imu_accel_std_dev_ * imu_accel_std_dev_;
+        imu.linear_acceleration_covariance[4] = imu_accel_std_dev_ * imu_accel_std_dev_;
+        imu.linear_acceleration_covariance[8] = imu_accel_std_dev_ * imu_accel_std_dev_;
 
-        imu.angular_velocity_covariance[0] = imu_gyro_std_dev_*imu_gyro_std_dev_;
-        imu.angular_velocity_covariance[4] = imu_gyro_std_dev_*imu_gyro_std_dev_;
-        imu.angular_velocity_covariance[8] = imu_gyro_std_dev_*imu_gyro_std_dev_;
+        imu.angular_velocity_covariance[0] = imu_gyro_std_dev_ * imu_gyro_std_dev_;
+        imu.angular_velocity_covariance[4] = imu_gyro_std_dev_ * imu_gyro_std_dev_;
+        imu.angular_velocity_covariance[8] = imu_gyro_std_dev_ * imu_gyro_std_dev_;
 
-        imu.orientation_covariance[0] = imu_orientation_std_dev_*imu_orientation_std_dev_;
-        imu.orientation_covariance[4] = imu_orientation_std_dev_*imu_orientation_std_dev_;
-        imu.orientation_covariance[8] = imu_orientation_std_dev_*imu_orientation_std_dev_;
-
+        imu.orientation_covariance[0] = imu_orientation_std_dev_ * imu_orientation_std_dev_;
+        imu.orientation_covariance[4] = imu_orientation_std_dev_ * imu_orientation_std_dev_;
+        imu.orientation_covariance[8] = imu_orientation_std_dev_ * imu_orientation_std_dev_;
 
         imu_pub_[i].publish(imu);
     }
