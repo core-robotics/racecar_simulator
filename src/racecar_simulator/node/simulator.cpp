@@ -1,8 +1,5 @@
 #include <ros/ros.h>
-
-// interactive marker
 #include <interactive_markers/interactive_marker_server.h>
-
 #include <ackermann_msgs/AckermannDriveStamped.h>
 #include <nav_msgs/OccupancyGrid.h>
 #include <nav_msgs/Odometry.h>
@@ -11,30 +8,22 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/impl/utils.h>
 #include <tf2_ros/transform_broadcaster.h>
-
 #include <geometry_msgs/PointStamped.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <sensor_msgs/LaserScan.h>
-
 #include "racecar_simulator/ackermann_kinematics.hpp"
 #include "racecar_simulator/pose_2d.hpp"
 #include "racecar_simulator/scan_simulator_2d.hpp"
-
 #include "racecar_simulator/car_params.hpp"
 #include "racecar_simulator/car_state.hpp"
 #include "racecar_simulator/ks_kinematics.hpp"
 #include "racecar_simulator/precompute.hpp"
 #include "racecar_simulator/st_kinematics.hpp"
-
 #include <iostream>
 #include <math.h>
-
 #include <fstream>
 #include <functional>
-// #include <racecar_simulator/observation.h>
 #include "control_msgs/CarState.h"
-#include "control_msgs/reset.h"
-#include "control_msgs/sync_control.h"
 #include "control_msgs/ddn_state.h"
 #include <std_msgs/Bool.h>
 #include <std_msgs/Float32MultiArray.h>
@@ -481,7 +470,7 @@ public:
         opp_pose_rviz_sub_ = n.subscribe(opp_pose_rviz_topic, 1, &RacecarSimulator::opp_pose_rviz_callback,
                                          this); // opponent vehicle pose
 
-        reset_service_ = n.advertiseService("/reset_service", &RacecarSimulator::reset_server, this);
+        // reset_service_ = n.advertiseService("/reset_service", &RacecarSimulator::reset_server, this);
 
         // Start a subscriber to listen to drive commands
         for (int i = 0; i < obj_num_; i++)
@@ -1473,44 +1462,44 @@ public:
         add_obs(ind);
     }
 
-    bool reset_server(control_msgs::reset::Request &req, control_msgs::reset::Response &res)
-    {
-        fprintf(stderr, "reset callback \n");
-        // sleep(2.);
-        RestartSimulation();
-        ros::Time timestamp0 = ros::Time::now();
+    // bool reset_server(control_msgs::reset::Request &req, control_msgs::reset::Response &res)
+    // {
+    //     fprintf(stderr, "reset callback \n");
+    //     // sleep(2.);
+    //     RestartSimulation();
+    //     ros::Time timestamp0 = ros::Time::now();
 
-        for (size_t i = 0; i < obj_num_; i++)
-        {
-            pub_pose_transform(timestamp0, i);
+    //     for (size_t i = 0; i < obj_num_; i++)
+    //     {
+    //         pub_pose_transform(timestamp0, i);
 
-            /// Publish the steering angle as a transformation so the
-            /// wheels
-            pub_steer_ang_transform(timestamp0, i);
+    //         /// Publish the steering angle as a transformation so the
+    //         /// wheels
+    //         pub_steer_ang_transform(timestamp0, i);
 
-            // Make an odom message as well and publish it
-            pub_odom(timestamp0, i);
+    //         // Make an odom message as well and publish it
+    //         pub_odom(timestamp0, i);
 
-            // TODO: make and publish IMU message
-            pub_imu(timestamp0, i);
-        }
+    //         // TODO: make and publish IMU message
+    //         pub_imu(timestamp0, i);
+    //     }
 
-        for (size_t i = 0; i < obj_num_; i++)
-        {
-            control_msgs::CarState state;
-            state.x = state_[i].x;
-            state.y = state_[i].y;
-            state.theta = state_[i].theta;
-            state.velocity = state_[i].velocity;
-            state.steer_angle = state_[i].steer_angle;
-            state.angular_velocity = state_[i].angular_velocity;
-            state.slip_angle = state_[i].slip_angle;
+    //     for (size_t i = 0; i < obj_num_; i++)
+    //     {
+    //         control_msgs::CarState state;
+    //         state.x = state_[i].x;
+    //         state.y = state_[i].y;
+    //         state.theta = state_[i].theta;
+    //         state.velocity = state_[i].velocity;
+    //         state.steer_angle = state_[i].steer_angle;
+    //         state.angular_velocity = state_[i].angular_velocity;
+    //         state.slip_angle = state_[i].slip_angle;
 
-            res.state.push_back(state);
-        }
+    //         res.state.push_back(state);
+    //     }
 
-        return true;
-    }
+    //     return true;
+    // }
 
     // void reset_callback(const std_msgs::Bool &msg) {
     //     std::cout<<(msg.data);
