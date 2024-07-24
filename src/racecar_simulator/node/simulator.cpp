@@ -11,7 +11,7 @@
 #include <geometry_msgs/PointStamped.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <sensor_msgs/LaserScan.h>
-#include "racecar_simulator/ackermann_kinematics.hpp"
+// #include "racecar_simulator/ackermann_kinematics.hpp"
 #include "racecar_simulator/pose_2d.hpp"
 #include "racecar_simulator/scan_simulator_2d.hpp"
 #include "racecar_simulator/car_params.hpp"
@@ -98,7 +98,6 @@ private:
     ros::Subscriber observation_sub_;
 
     // synchronized mode
-    // double sync_time_step_; // in seconds, TODO : synchronize with MPC time
 
     bool synchronized_mode_;
     // double sync_time_;
@@ -165,8 +164,7 @@ private:
     int model_type_;
     int collision_count_;
     std::vector<bool> obj_collision_;
-    // bool random_pose_;
-    std::vector<geometry_msgs::PointStamped> global_path_;
+
     std::string control_mode_;
 
     std::vector<std::vector<geometry_msgs::Point>> obs_corner_pts_;
@@ -195,7 +193,6 @@ public:
         n.getParam("pose_rviz_topic", pose_rviz_topic);
         n.getParam("opp_pose_rviz_topic", opp_pose_rviz_topic);
         n.getParam("imu_topic", imu_topic);
-        // n.getParam("sync_time_step", sync_time_step_);
 
         // Get the transformation frame names
         n.getParam("map_frame", map_frame);
@@ -254,19 +251,7 @@ public:
         n.getParam("imu_orientation_std_dev", imu_orientation_std_dev_);
 
         n.getParam("model_type", model_type_);
-        // std::string param_path;
-        // std::string cost_path;
-        // std::string bounds_path;
-        // std::string track_path;
-        // std::string normalization_path;
-        // n.getParam("param_path", param_path);
-        // n.getParam("cost_path", cost_path);
-        // n.getParam("bounds_path", bounds_path);
-        // n.getParam("track_path", track_path);
-        // n.getParam("normalization_path", normalization_path);
-        // n.getParam("json_paths", json_paths);
 
-        // integrator(update_pose_rate, json_paths);
         is_collision_ = false;
         collision_count_ = 0;
 
@@ -343,8 +328,6 @@ public:
             drive_sub_.push_back(drive_sub);
             state_pub_.push_back(state_pub);
             ddn_state_pub_.push_back(ddn_state_pub);
-            // pose_sub_.push_back(pose_sub);
-            // pose_rviz_sub_.push_back(pose_rviz_sub);
             noise_pose_pub_.push_back(noise_pose_pub);
             scan_pub_.push_back(scan_pub);
             odom_pub_.push_back(odom_pub);
@@ -463,10 +446,6 @@ public:
         desired_speed_.clear();
         desired_steer_ang_.clear();
         desired_accel_.clear();
-        // drive_sub_.clear();
-        // scan_pub_.clear();
-        // odom_pub_.clear();
-        // imu_pub_.clear();
     }
 
     double compute_accel(double desired_velocity, int i)
@@ -481,7 +460,6 @@ public:
 
         return acceleration;
     }
-
 
     void update_pose(const ros::TimerEvent &)
     {
@@ -552,11 +530,6 @@ public:
                 scan_pose.y = state_[i].y + scan_distance_to_base_link_ * std::sin(state_[i].theta);
                 scan_pose.theta = state_[i].theta;
 
-                // getConerPoint(i);
-
-                // Update the oppenent vehicle pose to include in scan
-                // UpdateObstaclePosition(i);
-
                 // Compute the scan from the lidar
                 std::vector<double> scan = scan_simulator_.scan(scan_pose);
 
@@ -570,10 +543,6 @@ public:
                 bool no_collision = true;
                 double min_scan = *std::min_element(scan_float.begin(), scan_float.end());
                 min_scan_distances_.push_back(min_scan);
-
-                // reset TTC
-                // if (no_collision)
-                //     TTC = false;
 
                 // Publish the laser message
                 sensor_msgs::LaserScan scan_msg;
@@ -604,9 +573,7 @@ public:
             if (is_collision_)
                 collision_pub_.publish(is_collision);
             std::cout << "collision count: " << collision_count_++ << "\n\n";
-
         }
-
 
     } // end of update_pose
 
@@ -641,7 +608,6 @@ public:
         ddn_state_pub_[i].publish(ddn_state);
     }
 
-
     std::vector<int> ind_2_rc(int ind)
     {
         std::vector<int> rc;
@@ -661,7 +627,6 @@ public:
         rc.push_back(static_cast<int>((x - origin_x) / map_resolution));
         return rc;
     }
-
 
     void set_accel(double accel, int i) { accel_[i] = std::min(std::max(accel, -max_accel_), max_accel_); }
 
@@ -718,7 +683,7 @@ public:
 
         return steer_vel;
     }
-   
+
     void obs_callback(const geometry_msgs::PointStamped &msg)
     {
         double x = msg.point.x;
@@ -752,8 +717,6 @@ public:
         desired_accel_[0] = 0.0;
         desired_steer_ang_[0] = 0.0;
         desired_speed_[0] = 0.0;
-
-        // pose_callback(&temp_pose, i);
     }
 
     void opp_pose_rviz_callback(const geometry_msgs::PoseStampedConstPtr &msg)
@@ -764,12 +727,11 @@ public:
         boost::shared_ptr<geometry_msgs::PoseStamped> shared_pose(&temp_pose, [](geometry_msgs::PoseStamped *) {});
         pose_callback(shared_pose, 1);
         state_[1].velocity = 0.0;
-
     }
 
     void drive_callback(const ackermann_msgs::AckermannDriveStampedConstPtr &msg, size_t i)
     {
-        // std::cout << "received drive command \n";
+
         desired_speed_[i] = msg->drive.speed;
         desired_accel_[i] = msg->drive.acceleration;
         desired_steer_ang_[i] = msg->drive.steering_angle;
@@ -888,12 +850,11 @@ public:
     void pub_odom(ros::Time timestamp, size_t i)
     {
         double yaw_noise, x_noise, y_noise, vel_noise;
-        
-            x_noise = 0.0;
-            y_noise = 0.0;
-            yaw_noise = 0.0;
-            vel_noise = 0.0;
-        
+
+        x_noise = 0.0;
+        y_noise = 0.0;
+        yaw_noise = 0.0;
+        vel_noise = 0.0;
 
         // Make an odom message and publish it
         nav_msgs::Odometry odom;
@@ -938,8 +899,6 @@ public:
 
     void pub_imu(ros::Time timestamp_, size_t i)
     {
-        // Make an IMU message and publish it
-        // TODO: make imu message
         double ax_noise, ay_noise, az_noise;
         double wx_noise, wy_noise, wz_noise;
         double roll_noise, pitch_noise, yaw_noise;
@@ -949,7 +908,7 @@ public:
         std::normal_distribution<double> gyro_noise(0.0, imu_gyro_std_dev_);
         std::normal_distribution<double> orientation_noise(0.0, imu_orientation_std_dev_);
 
-        // static std::default_random_engine generator;
+      
         if (noise_mode_)
         {
             ax_noise = accel_noise(generator);
@@ -1072,7 +1031,6 @@ public:
                                    obs_corner_pts[j]))
                 { // vehicle to vehicle
                   // collision check
-                    // fprintf(stderr, "Collision detected\n");
                     if (i == 0)      // collision reset occurs only when ego vehicle
                                      // collides
                         return true; // Collision detected between two vehicles
