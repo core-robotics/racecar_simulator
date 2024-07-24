@@ -11,7 +11,6 @@
 #include <geometry_msgs/PointStamped.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <sensor_msgs/LaserScan.h>
-// #include "racecar_simulator/ackermann_kinematics.hpp"
 #include "racecar_simulator/pose_2d.hpp"
 #include "racecar_simulator/scan_simulator_2d.hpp"
 #include "racecar_simulator/car_params.hpp"
@@ -908,7 +907,6 @@ public:
         std::normal_distribution<double> gyro_noise(0.0, imu_gyro_std_dev_);
         std::normal_distribution<double> orientation_noise(0.0, imu_orientation_std_dev_);
 
-      
         if (noise_mode_)
         {
             ax_noise = accel_noise(generator);
@@ -1029,8 +1027,8 @@ public:
             {
                 if (checkCollision(obs_corner_pts[i],
                                    obs_corner_pts[j]))
-                { // vehicle to vehicle
-                  // collision check
+                {                    // vehicle to vehicle
+                                     // collision check
                     if (i == 0)      // collision reset occurs only when ego vehicle
                                      // collides
                         return true; // Collision detected between two vehicles
