@@ -114,8 +114,8 @@ class BehaviorController {
             n.subscribe(imu_topic, 1, &BehaviorController::imu_callback, this);
         odom_sub = n.subscribe(odom_topic, 1,
                                &BehaviorController::odom_callback, this);
-        // key_sub = n.subscribe(keyboard_topic, 1,
-        //                       &BehaviorController::key_callback, this);
+        key_sub = n.subscribe(keyboard_topic, 1,
+                              &BehaviorController::key_callback, this);
         brake_bool_sub = n.subscribe(brake_bool_topic, 1,
                                      &BehaviorController::brake_callback, this);
 
@@ -307,37 +307,37 @@ class BehaviorController {
         }
     }
 
-    void joy_callback(const sensor_msgs::Joy &msg) {
-        // Changing mux_controller:
-        if (msg.buttons[joy_button_idx]) {
-            // joystick
-            toggle_mux(joy_mux_idx, "Joystick");
-        }
-        if (msg.buttons[key_button_idx]) {
-            // keyboard
-            toggle_mux(key_mux_idx, "Keyboard");
-        } else if (msg.buttons[brake_button_idx]) {
-            // emergency brake
-            if (safety_on) {
-                ROS_INFO("Emergency brake turned off");
-                safety_on = false;
-            } else {
-                ROS_INFO("Emergency brake turned on");
-                safety_on = true;
-            }
-        } else if (msg.buttons[random_walk_button_idx]) {
-            // random walker
-            toggle_mux(random_walker_mux_idx, "Random Walker");
-        } else if (msg.buttons[nav_button_idx]) {
-            // nav
-            toggle_mux(nav_mux_idx, "Navigation");
-        }
-        // ***Add new else if statement here for new planning method***
-        if (msg.buttons[new_button_idx]) {
-            // new planner
-            toggle_mux(new_mux_idx, "New Planner");
-        }
-    }
+    // void joy_callback(const sensor_msgs::Joy &msg) {
+    //     // Changing mux_controller:
+    //     if (msg.buttons[joy_button_idx]) {
+    //         // joystick
+    //         toggle_mux(joy_mux_idx, "Joystick");
+    //     }
+    //     if (msg.buttons[key_button_idx]) {
+    //         // keyboard
+    //         toggle_mux(key_mux_idx, "Keyboard");
+    //     } else if (msg.buttons[brake_button_idx]) {
+    //         // emergency brake
+    //         if (safety_on) {
+    //             ROS_INFO("Emergency brake turned off");
+    //             safety_on = false;
+    //         } else {
+    //             ROS_INFO("Emergency brake turned on");
+    //             safety_on = true;
+    //         }
+    //     } else if (msg.buttons[random_walk_button_idx]) {
+    //         // random walker
+    //         toggle_mux(random_walker_mux_idx, "Random Walker");
+    //     } else if (msg.buttons[nav_button_idx]) {
+    //         // nav
+    //         toggle_mux(nav_mux_idx, "Navigation");
+    //     }
+    //     // ***Add new else if statement here for new planning method***
+    //     if (msg.buttons[new_button_idx]) {
+    //         // new planner
+    //         toggle_mux(new_mux_idx, "New Planner");
+    //     }
+    // }
 
     void key_callback(const std_msgs::String &msg) {
         // Changing mux controller:

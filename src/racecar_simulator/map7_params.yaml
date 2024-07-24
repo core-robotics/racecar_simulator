@@ -88,7 +88,7 @@ keyboard_steer_ang: .3  # radians
 
 # The names of topics to listen and publish to
 joy_topic: "/joy"
-drive_topic: "/acermann_cmd"
+drive_topic: "/ackermann_cmd"
 map_topic: "/map"
 distance_transform_topic: "/dt"
 scan_topic: "/scan"

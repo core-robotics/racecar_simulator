@@ -19,7 +19,7 @@ class Mux {
     ros::Subscriber mux_sub;
 
     // Listen for messages from joystick and keyboard
-    ros::Subscriber joy_sub;
+    // ros::Subscriber joy_sub;
     ros::Subscriber key_sub;
 
     // number of objects
@@ -29,7 +29,7 @@ class Mux {
     ros::Publisher drive_pub;
 
     // Mux indices
-    int joy_mux_idx;
+    // int joy_mux_idx;
     int key_mux_idx;
 
     // Mux controller array
@@ -62,7 +62,7 @@ class Mux {
         std::string drive_topic, mux_topic, joy_topic, key_topic;
         n.getParam("drive_topic", drive_topic);
         n.getParam("mux_topic", mux_topic);
-        n.getParam("joy_topic", joy_topic);
+        // n.getParam("joy_topic", joy_topic);
         n.getParam("keyboard_topic", key_topic);
         n.getParam("obj_num", obj_num);
 
@@ -71,19 +71,19 @@ class Mux {
             n.advertise<ackermann_msgs::AckermannDriveStamped>(drive_topic, 10);
 
         // Start a subscriber to listen to mux messages
-        // mux_sub = n.subscribe(mux_topic, 1, &Mux::mux_callback, this);
+        mux_sub = n.subscribe(mux_topic, 1, &Mux::mux_callback, this);
 
         // Start subscribers to listen to joy and keyboard messages
         // joy_sub = n.subscribe(joy_topic, 1, &Mux::joy_callback, this);
-        // key_sub = n.subscribe(key_topic, 1, &Mux::key_callback, this);
+        key_sub = n.subscribe(key_topic, 1, &Mux::key_callback, this);
 
         // get mux indices
-        n.getParam("joy_mux_idx", joy_mux_idx);
+        // n.getParam("joy_mux_idx", joy_mux_idx);
         n.getParam("key_mux_idx", key_mux_idx);
 
         // get params for joystick calculations
-        n.getParam("joy_speed_axis", joy_speed_axis);
-        n.getParam("joy_angle_axis", joy_angle_axis);
+        // n.getParam("joy_speed_axis", joy_speed_axis);
+        // n.getParam("joy_angle_axis", joy_angle_axis);
         n.getParam("max_steering_angle", max_steering_angle);
         n.getParam("max_speed", max_speed);
 
@@ -172,33 +172,33 @@ class Mux {
         drive_pub.publish(drive_st_msg);
     }
 
-    // void mux_callback(const std_msgs::Int32MultiArray &msg) {
-    //     // reset mux member variable every time it's published
-    //     for (int i = 0; i < mux_size; i++) {
-    //         mux_controller[i] = bool(msg.data[i]);
-    //     }
+    void mux_callback(const std_msgs::Int32MultiArray &msg) {
+        // reset mux member variable every time it's published
+        for (int i = 0; i < mux_size; i++) {
+            mux_controller[i] = bool(msg.data[i]);
+        }
 
-    //     // Prints the mux whenever it is changed
-    //     bool changed = false;
-    //     // checks if nothing is on
-    //     bool anything_on = false;
-    //     for (int i = 0; i < mux_size; i++) {
-    //         changed = changed || (mux_controller[i] != prev_mux[i]);
-    //         anything_on = anything_on || mux_controller[i];
-    //     }
-    //     if (changed) {
-    //         std::cout << "MUX: " << std::endl;
-    //         for (int i = 0; i < mux_size; i++) {
-    //             std::cout << mux_controller[i] << std::endl;
-    //             prev_mux[i] = mux_controller[i];
-    //         }
-    //         std::cout << std::endl;
-    //     }
-    //     if (!anything_on) {
-    //         // if no mux channel is active, halt the car
-    //         publish_to_drive(0.0, 0.0);
-    //     }
-    // }
+        // Prints the mux whenever it is changed
+        bool changed = false;
+        // checks if nothing is on
+        bool anything_on = false;
+        for (int i = 0; i < mux_size; i++) {
+            changed = changed || (mux_controller[i] != prev_mux[i]);
+            anything_on = anything_on || mux_controller[i];
+        }
+        if (changed) {
+            std::cout << "MUX: " << std::endl;
+            for (int i = 0; i < mux_size; i++) {
+                std::cout << mux_controller[i] << std::endl;
+                prev_mux[i] = mux_controller[i];
+            }
+            std::cout << std::endl;
+        }
+        if (!anything_on) {
+            // if no mux channel is active, halt the car
+            publish_to_drive(0.0, 0.0);
+        }
+    }
 
     // void joy_callback(const sensor_msgs::Joy &msg) {
     //     // make drive message from joystick if turned on
@@ -212,44 +212,44 @@ class Mux {
     //     }
     // }
 
-    // void key_callback(const std_msgs::String &msg) {
-    //     // make drive message from keyboard if turned on
-    //     if (mux_controller[key_mux_idx]) {
-    //         // Determine desired velocity and steering angle
-    //         double desired_velocity = 0.0;
-    //         double desired_steer = 0.0;
+    void key_callback(const std_msgs::String &msg) {
+        // make drive message from keyboard if turned on
+        if (mux_controller[key_mux_idx]) {
+            // Determine desired velocity and steering angle
+            double desired_velocity = 0.0;
+            double desired_steer = 0.0;
 
-    //         bool publish = true;
+            bool publish = true;
 
-    //         if (msg.data == "w") {
-    //             // Forward
-    //             desired_velocity =
-    //                 keyboard_speed; // a good speed for keyboard control
-    //         } else if (msg.data == "s") {
-    //             // Backwards
-    //             desired_velocity = -keyboard_speed;
-    //         } else if (msg.data == "a") {
-    //             // Steer left and keep speed
-    //             desired_steer = keyboard_steer_ang;
-    //             desired_velocity = prev_key_velocity;
-    //         } else if (msg.data == "d") {
-    //             // Steer right and keep speed
-    //             desired_steer = -keyboard_steer_ang;
-    //             desired_velocity = prev_key_velocity;
-    //         } else if (msg.data == " ") {
-    //             // publish zeros to slow down/straighten out car
-    //         } else {
-    //             // so that it doesn't constantly publish zeros when you press
-    //             // other keys
-    //             publish = false;
-    //         }
+            if (msg.data == "w") {
+                // Forward
+                desired_velocity =
+                    keyboard_speed; // a good speed for keyboard control
+            } else if (msg.data == "s") {
+                // Backwards
+                desired_velocity = -keyboard_speed;
+            } else if (msg.data == "a") {
+                // Steer left and keep speed
+                desired_steer = keyboard_steer_ang;
+                desired_velocity = prev_key_velocity;
+            } else if (msg.data == "d") {
+                // Steer right and keep speed
+                desired_steer = -keyboard_steer_ang;
+                desired_velocity = prev_key_velocity;
+            } else if (msg.data == " ") {
+                // publish zeros to slow down/straighten out car
+            } else {
+                // so that it doesn't constantly publish zeros when you press
+                // other keys
+                publish = false;
+            }
 
-    //         if (publish) {
-    //             publish_to_drive(desired_velocity, desired_steer);
-    //             prev_key_velocity = desired_velocity;
-    //         }
-    //     }
-    // }
+            if (publish) {
+                publish_to_drive(desired_velocity, desired_steer);
+                prev_key_velocity = desired_velocity;
+            }
+        }
+    }
 };
 
 /// Channel class method implementations
