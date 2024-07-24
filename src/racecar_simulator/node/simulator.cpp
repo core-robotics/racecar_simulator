@@ -482,117 +482,6 @@ public:
         return acceleration;
     }
 
-   
-
-
-    void ObservationCallback(const ackermann_msgs::AckermannDriveStampedConstPtr &msg)
-    {
-        // obs_corner_pts_.clear();
-        min_scan_distances_.clear();
-        // sync_time_ += 1.0;
-
-        std::cout << "ego received drive command \n";
-        desired_speed_[0] = msg->drive.speed;
-        desired_accel_[0] = msg->drive.acceleration;
-        desired_steer_ang_[0] = msg->drive.steering_angle;
-
-        // Update the pose
-        ros::Time timestamp = ros::Time::now();
-        // fprintf(stderr, "timestamp : %f\n", timestamp.toSec());
-        // simulate P controller
-        for (int i = 0; i < obj_num_; i++)
-        {
-            if (control_mode_ == "v")
-            {
-                if (std::isnan(desired_speed_[i]))
-                    desired_speed_[i] = 0.0;
-                double accel = compute_accel(desired_speed_[i], i);
-                set_accel(desired_accel_[i], i);
-            }
-            else if (control_mode_ == "a")
-            {
-                if (std::isnan(desired_accel_[i]))
-                    desired_accel_[i] = 0.0;
-                set_accel(desired_accel_[i], i);
-            }
-            else
-                ROS_INFO("control mode error");
-            set_steer_angle_vel(compute_steer_vel(desired_steer_ang_[i], i), i);
-
-            // double current_seconds = timestamp.toSec();
-            state_[i] = STKinematics::update(state_[i], accel_[i], steer_angle_vel_[i], params_, update_pose_rate);
-            state_[i].velocity = std::min(std::max(state_[i].velocity, -max_speed_), max_speed_);
-            state_[i].steer_angle = std::min(std::max(state_[i].steer_angle, -max_steering_angle_), max_steering_angle_);
-
-            // previous_seconds = current_seconds;
-
-            /// Publish the pose as a transformation
-            pub_pose_transform(timestamp, i);
-
-            /// Publish the steering angle as a transformation so the wheels
-            pub_steer_ang_transform(timestamp, i);
-
-            // Make an odom message as well and publish it
-            pub_odom(timestamp, i);
-
-            // TODO: make and publish IMU message
-            pub_imu(timestamp, i);
-
-            /// KEEP in sim
-            // If we have a map, perform a scan
-            if (map_exists)
-            {
-                // Get the pose of the lidar, given the pose of base link
-                // (base link is the center of the rear axle)
-                Pose2D scan_pose;
-                scan_pose.x = state_[i].x + scan_distance_to_base_link_ * std::cos(state_[i].theta);
-                scan_pose.y = state_[i].y + scan_distance_to_base_link_ * std::sin(state_[i].theta);
-                scan_pose.theta = state_[i].theta;
-
-                
-
-                // Compute the scan from the lidar
-                std::vector<double> scan = scan_simulator_.scan(scan_pose); // scan : distance from lidar to obstacle
-
-                // Convert to float
-                std::vector<float> scan_float(scan.size());
-                for (size_t idx = 0; idx < scan.size(); idx++)
-                    scan_float[idx] = scan[idx];
-
-                // TTC Calculations are done here so the car can be halted in
-                // the simulator: to reset TTC
-                bool no_collision = true;
-                double min_scan = *std::min_element(scan_float.begin(), scan_float.end());
-                min_scan_distances_.push_back(min_scan);
-
-                // Publish the laser message
-                sensor_msgs::LaserScan scan_msg;
-                scan_msg.header.stamp = timestamp;
-                scan_msg.header.frame_id = scan_frame + std::to_string(i);
-                scan_msg.angle_min = -scan_simulator_.get_field_of_view() / 2.;
-                scan_msg.angle_max = scan_simulator_.get_field_of_view() / 2.;
-                scan_msg.angle_increment = scan_simulator_.get_angle_increment();
-                scan_msg.range_max = 100;
-                scan_msg.ranges = scan_float;
-                scan_msg.intensities = scan_float;
-                scan_pub_[i].publish(scan_msg);
-
-                // Publish a transformation between base link and laser
-                pub_laser_link_transform(timestamp, i);
-            }
-        }
-
-        bool curr_collision = checkAllCollisions(obs_corner_pts_);
-        if (curr_collision != is_collision_)
-        {
-            is_collision_ = curr_collision;
-            std_msgs::Bool is_collision;
-            is_collision.data = is_collision_;
-            if (is_collision_)
-                collision_pub_.publish(is_collision);
-           
-        }
-    }
 
     void update_pose(const ros::TimerEvent &)
     {
@@ -999,20 +888,12 @@ public:
     void pub_odom(ros::Time timestamp, size_t i)
     {
         double yaw_noise, x_noise, y_noise, vel_noise;
-        if (noise_mode_)
-        {
-            x_noise = pose_noise_ * (rand() % 2 - 1);
-            y_noise = pose_noise_ * (rand() % 2 - 1);
-            yaw_noise = yaw_noise_ * (rand() % 2 - 1);
-            vel_noise = vel_noise_ * (rand() % 2 - 1);
-        }
-        else
-        {
+        
             x_noise = 0.0;
             y_noise = 0.0;
             yaw_noise = 0.0;
             vel_noise = 0.0;
-        }
+        
 
         // Make an odom message and publish it
         nav_msgs::Odometry odom;
