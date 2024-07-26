@@ -158,6 +158,7 @@ CarState STKinematics::update_with_pacejka(const CarState start, double accel, d
             end.theta -= 2 * M_PI;
         else if (end.theta < -M_PI)
             end.theta += 2 * M_PI;
+        std::cout<<"noise_mode"<<"\n";
     }
     else
     {
