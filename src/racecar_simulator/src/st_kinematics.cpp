@@ -3,6 +3,7 @@
 #include "racecar_simulator/car_state.hpp"
 #include "racecar_simulator/st_kinematics.hpp"
 #include <iostream>
+#include <random>
 
 using namespace racecar_simulator;
 
@@ -10,14 +11,16 @@ using namespace racecar_simulator;
 // Vehicle Models
 // https://gitlab.lrz.de/tum-cps/commonroad-vehicle-models/blob/master/vehicleModels_commonRoad.pdf
 
-CarState STKinematics::update(const CarState start, double accel, double steer_angle_vel, CarParams p, double dt) {
+CarState STKinematics::update(const CarState start, double accel, double steer_angle_vel, CarParams p, double dt)
+{
 
     double thresh = 1.03; // cut off to avoid singular behavior
     double err = .03;     // deadband to avoid flip flop
 
     // if velocity is low or negative, use normal Kinematic Single Track
     // dynamics
-    if (start.velocity < thresh) {
+    if (start.velocity < thresh)
+    {
         return update_k(start, accel, steer_angle_vel, p, dt);
     }
 
@@ -38,10 +41,13 @@ CarState STKinematics::update(const CarState start, double accel, double steer_a
 
     // in case velocity is 0
     double vel_ratio, first_term;
-    if (start.velocity == 0) {
+    if (start.velocity == 0)
+    {
         vel_ratio = 0;
         first_term = 0;
-    } else {
+    }
+    else
+    {
         vel_ratio = start.angular_velocity / start.velocity;
         first_term = p.friction_coeff / (start.velocity * (p.l_r + p.l_f));
     }
@@ -72,7 +78,8 @@ CarState STKinematics::update(const CarState start, double accel, double steer_a
     return end;
 }
 
-CarState STKinematics::update_k(const CarState start, double accel, double steer_angle_vel, CarParams p, double dt) {
+CarState STKinematics::update_k(const CarState start, double accel, double steer_angle_vel, CarParams p, double dt)
+{
 
     CarState end;
 
@@ -103,13 +110,15 @@ CarState STKinematics::update_k(const CarState start, double accel, double steer
     return end;
 }
 
-CarState STKinematics::update_with_pacejka(const CarState start, double accel, double steer_angle_vel, const CarParams &p, double dt) {
+CarState STKinematics::update_with_pacejka(const CarState start, double accel, double steer_angle_vel, const CarParams &p, double dt, bool noise_mode)
+{
     double thresh = 1.03; // cut off to avoid singular behavior
     double err = .03;     // deadband to avoid flip flop
 
     // if velocity is low or negative, use normal Kinematic Single Track
     // dynamics
-    if (start.velocity < thresh) {
+    if (start.velocity < thresh)
+    {
         return update_k(start, accel, steer_angle_vel, p, dt);
     }
 
@@ -132,6 +141,21 @@ CarState STKinematics::update_with_pacejka(const CarState start, double accel, d
     double theta_double_dot = (p.l_f * F_fy * std::cos(start.steer_angle) - p.l_r * F_ry) / p.I_z;
     double slip_angle_dot = ((F_fy + F_ry) / (p.mass * start.velocity)) - start.angular_velocity;
 
+    // for noise
+    if (noise_mode)
+    {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::normal_distribution<> d(0, 1);
+        end.x = start.x + x_dot * dt + d(gen) * 0.01;
+        end.y = start.y + y_dot * dt + d(gen) * 0.01;
+        end.theta = start.theta + theta_dot * dt + d(gen) * 0.01;
+        end.velocity = start.velocity + v_dot * dt + d(gen) * 0.01;
+        end.steer_angle = start.steer_angle + steer_angle_dot * dt + d(gen) * 0.01;
+        end.angular_velocity = start.angular_velocity + theta_double_dot * dt + d(gen) * 0.01;
+        end.slip_angle = start.slip_angle + slip_angle_dot * dt + d(gen) * 0.01;
+    }
+
     // update state
     end.x = start.x + x_dot * dt;
     end.y = start.y + y_dot * dt;
@@ -149,7 +173,8 @@ CarState STKinematics::update_with_pacejka(const CarState start, double accel, d
     return end;
 }
 
-double STKinematics::getForceFront(const CarState &state, const CarParams &p) {
+double STKinematics::getForceFront(const CarState &state, const CarParams &p)
+{
 
     // 슬립 각도를 라디안으로 변환
     double alpha = getFrontSlipAngle(state, p);
@@ -158,21 +183,24 @@ double STKinematics::getForceFront(const CarState &state, const CarParams &p) {
     return p.D * std::sin(p.C * std::atan(p.B * alpha));
 }
 
-double STKinematics::getForceRear(const CarState &state, const CarParams &p) {
+double STKinematics::getForceRear(const CarState &state, const CarParams &p)
+{
 
     // 슬립 각도를 라디안으로 변환
     double alpha = getRearSlipAngle(state, p);
     return p.D * std::sin(p.C * std::atan(p.B * alpha));
 }
 
-double STKinematics::getFrontSlipAngle(const CarState &state, const CarParams &p) {
+double STKinematics::getFrontSlipAngle(const CarState &state, const CarParams &p)
+{
     double vx = state.velocity * std::cos(state.slip_angle);
     double vy = state.velocity * std::sin(state.slip_angle);
     double front_slip_angle = -std::atan2(vy + p.l_f * state.angular_velocity, vx) + state.steer_angle;
     return front_slip_angle;
 }
 
-double STKinematics::getRearSlipAngle(const CarState &state, const CarParams &p) {
+double STKinematics::getRearSlipAngle(const CarState &state, const CarParams &p)
+{
     double vx = state.velocity * std::cos(state.slip_angle);
     double vy = state.velocity * std::sin(state.slip_angle);
     double rear_slip_angle = -std::atan2(vy - p.l_r * state.angular_velocity, vx);

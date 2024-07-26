@@ -17,7 +17,7 @@ class STKinematics {
 
     static CarState update_with_pacejka(const CarState start, double accel,
                                         double steer_angle_vel,
-                                        const CarParams &p, double dt);
+                                        const CarParams &p, double dt,bool noise_mode);
     // static CarState RK4(const CarState &x, const double accel,
     //                     const double steer, const double ts, const CarParams
     //                     p);

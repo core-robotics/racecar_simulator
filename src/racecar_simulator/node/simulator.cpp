@@ -493,7 +493,7 @@ public:
             if (model_type_ == ORIGINALMODEL)
                 state_[i] = STKinematics::update(state_[i], accel_[i], steer_angle_vel_[i], params_, update_pose_rate);
             else if (model_type_ == PAJEKAMODEL)
-                state_[i] = STKinematics::update_with_pacejka(state_[i], accel_[i], steer_angle_vel_[i], params_, update_pose_rate);
+                state_[i] = STKinematics::update_with_pacejka(state_[i], accel_[i], steer_angle_vel_[i], params_, update_pose_rate, noise_mode_);
             else
             {
                 state_[i] = STKinematics::update(state_[i], accel_[i], steer_angle_vel_[i], params_, update_pose_rate);
@@ -879,21 +879,21 @@ public:
 
         odom_pub_[i].publish(odom);
 
-        if (noise_mode_)
-        {
-            // Publish the noise pose with noise_pose_pub_
-            geometry_msgs::PoseStamped noise_pose;
-            noise_pose.header.stamp = timestamp;
-            noise_pose.header.frame_id = map_frame;
-            noise_pose.pose.position.x = state_[i].x + x_noise;
-            noise_pose.pose.position.y = state_[i].y + y_noise;
-            noise_pose.pose.position.z = 0.0;
-            noise_pose.pose.orientation.x = quat.x();
-            noise_pose.pose.orientation.y = quat.y();
-            noise_pose.pose.orientation.z = quat.z();
-            noise_pose.pose.orientation.w = quat.w();
-            noise_pose_pub_[i].publish(noise_pose);
-        }
+        // if (noise_mode_)
+        // {
+        //     // Publish the noise pose with noise_pose_pub_
+        //     geometry_msgs::PoseStamped noise_pose;
+        //     noise_pose.header.stamp = timestamp;
+        //     noise_pose.header.frame_id = map_frame;
+        //     noise_pose.pose.position.x = state_[i].x + x_noise;
+        //     noise_pose.pose.position.y = state_[i].y + y_noise;
+        //     noise_pose.pose.position.z = 0.0;
+        //     noise_pose.pose.orientation.x = quat.x();
+        //     noise_pose.pose.orientation.y = quat.y();
+        //     noise_pose.pose.orientation.z = quat.z();
+        //     noise_pose.pose.orientation.w = quat.w();
+        //     noise_pose_pub_[i].publish(noise_pose);
+        // }
     }
 
     void pub_imu(ros::Time timestamp_, size_t i)
