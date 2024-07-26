@@ -138,7 +138,7 @@ C: 1.5
 D: 35.0
 
 #For noise
-noise_mode: false
+noise_mode: true
 pose_noise: 0.0
 yaw_noise: 0.01
 vel_noise: 0.01

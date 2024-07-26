@@ -147,18 +147,18 @@ CarState STKinematics::update_with_pacejka(const CarState start, double accel, d
         std::random_device rd;
         std::mt19937 gen(rd());
         std::normal_distribution<> d(0, 1);
-        end.x = start.x + x_dot * dt + d(gen) * 1;
-        end.y = start.y + y_dot * dt + d(gen) * 1;
-        end.theta = start.theta + theta_dot * dt + d(gen) * 1;
-        end.velocity = start.velocity + v_dot * dt + d(gen) * 1;
-        end.steer_angle = start.steer_angle + steer_angle_dot * dt + d(gen) * 1;
-        end.angular_velocity = start.angular_velocity + theta_double_dot * dt + d(gen) * 1;
-        end.slip_angle = start.slip_angle + slip_angle_dot * dt + d(gen) * 1;
+        end.x = start.x + x_dot * dt + d(gen) * 0.01;
+        end.y = start.y + y_dot * dt + d(gen) * 0.01;
+        end.theta = start.theta + theta_dot * dt + d(gen) * 0.01;
+        end.velocity = start.velocity + v_dot * dt + d(gen) * 0.01;
+        end.steer_angle = start.steer_angle + steer_angle_dot * dt + d(gen) * 0.01;
+        end.angular_velocity = start.angular_velocity + theta_double_dot * dt + d(gen) * 0.01;
+        end.slip_angle = start.slip_angle + slip_angle_dot * dt + d(gen) * 0.01;
         if (end.theta > M_PI)
             end.theta -= 2 * M_PI;
         else if (end.theta < -M_PI)
             end.theta += 2 * M_PI;
-        std::cout<<"noise_mode"<<"\n";
+        
     }
     else
     {
@@ -175,6 +175,7 @@ CarState STKinematics::update_with_pacejka(const CarState start, double accel, d
             end.theta -= 2 * M_PI;
         else if (end.theta < -M_PI)
             end.theta += 2 * M_PI;
+        
     }
 
     return end;
