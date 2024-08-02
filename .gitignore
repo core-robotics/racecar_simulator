@@ -1,6 +1,6 @@
 devel
 build
-log
+log/
 install
 .catkin_tools
 .vscode

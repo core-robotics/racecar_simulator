@@ -1,1 +1,0 @@
-/home/a/racecar_simulator/build/racecar_simulator/ament_cmake_environment_hooks/local_setup.zsh
