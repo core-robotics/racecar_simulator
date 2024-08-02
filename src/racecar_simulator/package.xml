@@ -3,14 +3,19 @@
 <package format="3">
   <name>racecar_simulator</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>racecar_simulator for F1tenth implemented by ROS2 Humble</description>
   <maintainer email="tlstoddk99@gmail.com">a</maintainer>
-  <license>TODO: License declaration</license>
+  <license>Apache 2.0</license>
 
+  <!-- Dependencies -->
   <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>rclcpp</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
 
-  <test_depend>ament_lint_auto</test_depend>
-  <test_depend>ament_lint_common</test_depend>
+  <!-- Test Dependencies -->
+  <!-- Uncomment and add if you have test dependencies -->
+  <!-- <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend> -->
 
   <export>
     <build_type>ament_cmake</build_type>

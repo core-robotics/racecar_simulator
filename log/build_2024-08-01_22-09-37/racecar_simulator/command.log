@@ -1,0 +1,6 @@
+Invoking command in '/home/a/racecar_simulator/build/racecar_simulator': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/a/racecar_simulator/src/racecar_simulator -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/a/racecar_simulator/install/racecar_simulator
+Invoked command in '/home/a/racecar_simulator/build/racecar_simulator' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/a/racecar_simulator/src/racecar_simulator -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/a/racecar_simulator/install/racecar_simulator
+Invoking command in '/home/a/racecar_simulator/build/racecar_simulator': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/a/racecar_simulator/build/racecar_simulator -- -j24 -l24
+Invoked command in '/home/a/racecar_simulator/build/racecar_simulator' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/a/racecar_simulator/build/racecar_simulator -- -j24 -l24
+Invoking command in '/home/a/racecar_simulator/build/racecar_simulator': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --install /home/a/racecar_simulator/build/racecar_simulator
+Invoked command in '/home/a/racecar_simulator/build/racecar_simulator' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --install /home/a/racecar_simulator/build/racecar_simulator
