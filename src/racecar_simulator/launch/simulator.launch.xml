@@ -1,0 +1,58 @@
+<launch>
+    <node 
+    pkg="racecar_simulator" 
+    exec="simulator" 
+    name="racecar_simulator" 
+    output="screen">
+    </node>
+    
+    <node
+    pkg="rviz2"
+    exec="rviz2"
+    name="rviz2"
+    output="screen">
+    <arguments
+    >-d $(find-pkg-share racecar_simulator)/launch/simulator.rviz</arguments>
+    </node>
+</launch>
+
+<!-- 
+<launch> -->
+
+  <!-- Declare arguments -->
+  <!-- <arg name="map" default="$(find-pkg-share racecar_simulator)/maps/map7.yaml"/> -->
+  
+  <!-- Launch the map server -->
+  <!--
+  <node
+    pkg="nav2_map_server"
+    exec="map_server"
+    name="map_server">
+    <param name="yaml_filename" value="$(var map)" />
+  </node>
+  -->
+  
+  <!-- Include the racecar model launch file -->
+  <!--
+  <include file="$(find-pkg-share racecar_simulator)/launch/multi_racecar_model.launch.xml"/>
+  -->
+  
+  <!-- Launch the racecar simulator with parameters -->
+  <!-- <node
+    pkg="racecar_simulator"
+    exec="simulator"
+    name="racecar_simulator"
+    output="screen">
+    <param name="map7_params" value="$(find-pkg-share racecar_simulator)/map7_params.yaml"/>
+  </node> -->
+  
+  <!-- Launch RViz2 -->
+  <!-- <node
+    pkg="rviz2"
+    exec="rviz2"
+    name="rviz"
+    output="screen">
+    <arguments>-d $(find-pkg-share racecar_simulator)/launch/simulator.rviz</arguments>
+  </node>
+  
+</launch> -->
