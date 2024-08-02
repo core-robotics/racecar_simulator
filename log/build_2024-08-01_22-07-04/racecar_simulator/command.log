@@ -1,2 +1,0 @@
-Invoking command in '/home/a/racecar_simulator/build/racecar_simulator': /usr/bin/cmake /home/a/racecar_simulator/src/racecar_simulator -DCMAKE_INSTALL_PREFIX=/home/a/racecar_simulator/install/racecar_simulator
-Invoked command in '/home/a/racecar_simulator/build/racecar_simulator' returned '1': /usr/bin/cmake /home/a/racecar_simulator/src/racecar_simulator -DCMAKE_INSTALL_PREFIX=/home/a/racecar_simulator/install/racecar_simulator
