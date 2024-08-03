@@ -1,9 +1,10 @@
 from launch import LaunchDescription
-from launch_ros.actions import Node 
-from launch.actions import TimerAction, RegisterEventHandler
+from launch_ros.actions import Node
 from launch.substitutions import Command
-from launch.event_handlers import OnProcessStart
 from launch_ros.parameter_descriptions import ParameterValue
+from launch.event_handlers import OnProcessStart
+from launch.actions import TimerAction, RegisterEventHandler, ExecuteProcess
+from launch.substitutions import FindExecutable
 import os
 
 def generate_launch_description():
@@ -110,5 +111,18 @@ def generate_launch_description():
     )
     ld.add_action(rviz_node)
     ld.add_action(node_start)
+    ld.add_action(
+    ExecuteProcess(
+        cmd=[[
+            FindExecutable(name='ros2'),
+            " service call",
+            " /map_server/load_map",
+            " nav2_msgs/srv/LoadMap",
+            ' "{map_url: /home/a/racecar_simulator/src/racecar_simulator/maps/c_track.yaml}"',
+            " -r 10"
+        ]],
+        shell=True
+    )
+    )
 
     return ld
