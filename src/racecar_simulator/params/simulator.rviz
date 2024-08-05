@@ -33,7 +33,7 @@ Visualization Manager:
       Cell Size: 0.10000000149011612
       Class: rviz_default_plugins/Grid
       Color: 160; 160; 164
-      Enabled: true
+      Enabled: false
       Line Style:
         Line Width: 0.029999999329447746
         Value: Lines
@@ -46,7 +46,7 @@ Visualization Manager:
       Plane: XY
       Plane Cell Count: 9
       Reference Frame: base_link0
-      Value: true
+      Value: false
     - Alpha: 0.699999988079071
       Class: rviz_default_plugins/Map
       Color Scheme: map
@@ -316,25 +316,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 14.003478050231934
+      Distance: 2.5054948329925537
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 1.4184207916259766
-        Y: -4.244694709777832
-        Z: 1.400883674621582
+        X: 1.1317613124847412
+        Y: -4.3719282150268555
+        Z: 0.003017425537109375
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.5697963237762451
+      Pitch: 1.5597962141036987
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 3.1185803413391113
+      Yaw: 3.2515759468078613
     Saved: ~
 Window Geometry:
   Displays:
@@ -352,5 +352,5 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 1200
-  X: 57
-  Y: 27
+  X: 25
+  Y: -5
