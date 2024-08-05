@@ -30,9 +30,9 @@ private:
     tf_map_baselink_0();
     tf_wheel_l_0();
     tf_wheel_r_0();
-    // tf_map_baselink_1();
-    // tf_wheel_l_1();
-    // tf_wheel_r_1();
+    tf_map_baselink_1();
+    tf_wheel_l_1();
+    tf_wheel_r_1();
   }
 
   void pub_loop()

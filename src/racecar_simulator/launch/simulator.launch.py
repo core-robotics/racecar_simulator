@@ -24,41 +24,8 @@ def generate_launch_description():
 
     # # Define the path to the robot description file
     car0_xacro_file = os.path.join(pkg_dir, "params", "racecar0.xacro")
-    # car1_xacro_file = os.path.join(pkg_dir, "params", "racecar1.xacro")
-    
-    # with open(car0_urdf_file, "r") as infp:
-    #     car0_urdf = infp.read()
-    # with open(car1_urdf_file, "r") as infp:
-    #     car1_urdf = infp.read()
-
-    # robot0_state_publisher_node = Node(
-    #     package="robot_state_publisher",
-    #     executable="robot_state_publisher",
-    #     name="robot_state_publisher",
-    #     namespace="racecar0",
-    #     output="screen",
-    #     parameters=[
-    #         {
-    #             "use_sim_time": True,
-    #             "robot_description": car0_urdf,
-    #         }
-    #     ],
-    # )
-
-    # robot1_state_publisher_node = Node(
-    #     package="robot_state_publisher",
-    #     executable="robot_state_publisher",
-    #     name="robot_state_publisher",
-    #     namespace="racecar1",
-    #     output="screen",
-    #     parameters=[
-    #         {
-    #             "use_sim_time": True,
-    #             "robot_description": car1_urdf,
-    #         }
-    #     ],
-    # )
-    
+    car1_xacro_file = os.path.join(pkg_dir, "params", "racecar1.xacro")
+     
     robot0_state_publisher_node = Node(
         package="robot_state_publisher",
         executable="robot_state_publisher",
@@ -74,20 +41,20 @@ def generate_launch_description():
         ],
     )
 
-    # robot1_state_publisher_node = Node(
-    #     package="robot_state_publisher",
-    #     executable="robot_state_publisher",
-    #     name="robot_state_publisher",
-    #     namespace="racecar1",
-    #     output="screen",
-    #     parameters=[
-    #         {
-    #             "robot_description": ParameterValue(
-    #                 Command(["xacro ", str(car1_xacro_file), " prefix:=1"]), value_type=str
-    #             )
-    #         }
-    #     ],
-    # )
+    robot1_state_publisher_node = Node(
+        package="robot_state_publisher",
+        executable="robot_state_publisher",
+        name="robot_state_publisher",
+        namespace="racecar1",
+        output="screen",
+        parameters=[
+            {
+                "robot_description": ParameterValue(
+                    Command(["xacro ", str(car1_xacro_file), " prefix:=1"]), value_type=str
+                )
+            }
+        ],
+    )
 
     racecar_node = Node(
         package="racecar_simulator",
@@ -116,7 +83,7 @@ def generate_launch_description():
     ld.add_action(map_publisher_node)
     ld.add_action(racecar_node)
     ld.add_action(robot0_state_publisher_node)
-    # ld.add_action(robot1_state_publisher_node)
+    ld.add_action(robot1_state_publisher_node)
     
 
     return ld
