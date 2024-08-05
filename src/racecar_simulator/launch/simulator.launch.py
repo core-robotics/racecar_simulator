@@ -64,18 +64,6 @@ def generate_launch_description():
         output='screen',
     )
     
-    lifecycle_manager_node = Node(
-        package='nav2_lifecycle_manager',
-        executable='lifecycle_manager',
-        name='lifecycle_manager',
-        output='screen',
-        parameters=[{
-            # 'use_sim_time': True, # Set to True if using simulated time
-            'autostart': True, # Automatically startup the managed nodes
-            'node_names': ['map_server'], # Specify the lifecycle nodes to be managed
-        }],
-    )
-    
     rviz_node = Node(
         package='rviz2',
         executable='rviz2',
@@ -85,44 +73,15 @@ def generate_launch_description():
     )
     
     map_server_node = Node(
-        package='nav2_map_server',
+        package='racecar_simulator',
         executable='map_server',
         name='map_server',
         output='screen',
         parameters=[{'yaml_filename': map_server_params}],
     )
-    
-    delay_node = TimerAction(
-        period=1.0,
-        actions=[
-            map_server_node
-            ,racecar_node
-            ,lifecycle_manager_node
-            # ,robot1_state_publisher_node
-            # ,robot2_state_publisher_node
-            ]
-    )
-    
-    node_start=RegisterEventHandler(
-        event_handler=OnProcessStart(
-            target_action=rviz_node,
-            on_start=[delay_node]
-        )
-    )
+
     ld.add_action(rviz_node)
-    ld.add_action(node_start)
-    ld.add_action(
-    ExecuteProcess(
-        cmd=[[
-            FindExecutable(name='ros2'),
-            " service call",
-            " /map_server/load_map",
-            " nav2_msgs/srv/LoadMap",
-            ' "{map_url: /home/a/racecar_simulator/src/racecar_simulator/maps/c_track.yaml}"',
-            " -r 10"
-        ]],
-        shell=True
-    )
-    )
+    ld.add_action(map_server_node)
+    ld.add_action(racecar_node)
 
     return ld
