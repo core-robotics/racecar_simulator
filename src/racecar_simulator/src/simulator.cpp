@@ -178,9 +178,9 @@ public:
 	void initCars()
 	{
 		// Initialize car0
-		car_state0_ = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+		car_state0_ = {2.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 		// Initialize car1
-		car_state1_ = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+		car_state1_ = {4.0, -3.0, -1.4, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 	}
 
 	// Simulator loop for updating car states
@@ -188,9 +188,10 @@ public:
 	{
 		setInput(car_state0_, desired_accel0_, desired_steer_ang0_);
 		setInput(car_state1_, desired_accel1_, desired_steer_ang1_);
-		car_state0_ = updateState(car_state0_);
-		car_state1_ = updateState(car_state1_);
+		// car_state0_ = updateState(car_state0_);
+		// car_state1_ = updateState(car_state1_);
 		setTF();
+		
 	}
 
 	// Publisher loop for broadcasting car states
