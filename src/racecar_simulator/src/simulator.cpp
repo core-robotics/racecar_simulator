@@ -188,8 +188,8 @@ public:
 	{
 		setInput(car_state0_, desired_accel0_, desired_steer_ang0_);
 		setInput(car_state1_, desired_accel1_, desired_steer_ang1_);
-		// car_state0_ = updateState(car_state0_);
-		// car_state1_ = updateState(car_state1_);
+		car_state0_ = updateState(car_state0_);
+		car_state1_ = updateState(car_state1_);
 		setTF();
 		
 	}
@@ -262,6 +262,7 @@ public:
 		car_state0_.x = msg->pose.pose.position.x;
 		car_state0_.y = msg->pose.pose.position.y;
 		car_state0_.yaw = yaw;
+		car_state0_.v = 0.0;
 
 		publishTransform("map", "base_link0", car_state0_.x, car_state0_.y, car_state0_.yaw);
 
@@ -285,6 +286,7 @@ public:
 		car_state1_.x = msg->pose.position.x;
 		car_state1_.y = msg->pose.position.y;
 		car_state1_.yaw = yaw;
+		car_state1_.v = 0.0;
 
 		publishTransform("map", "base_link1", car_state1_.x, car_state1_.y, car_state1_.yaw);
 		RCLCPP_INFO(this->get_logger(), "\nCar1 x: %f, y: %f, yaw: %f", car_state1_.x, car_state1_.y, car_state1_.yaw);
@@ -374,7 +376,7 @@ public:
 	}
 
 	// Update car0 state
-	CarState updateState(CarState start)
+	CarState updateState(CarState &start)
 	{
 		// Implement the update function for car0
 		CarState end;
@@ -384,6 +386,10 @@ public:
 		double a_r = -atan2(start.vy - car0_params_.l_r * start.omega, start.vx);
 		double F_ry = car0_params_.D_r * sin(car0_params_.C_r * atan(car0_params_.B_r * a_r));
 		// double F_x = start.accel;
+		if(abs(start.v)<1.0e-8)
+		{
+			start.v =1.0e-8;
+		}
 
 		double x_dot = start.v * cos(start.yaw + start.slip_angle);
 		double y_dot = start.v * sin(start.yaw + start.slip_angle);
