@@ -15,6 +15,7 @@ find_package(ackermann_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(yaml-cpp REQUIRED)
+find_package(control_msgs REQUIRED)
 
 # Include directories
 include_directories(include)
@@ -30,6 +31,7 @@ ament_target_dependencies(simulator
   geometry_msgs
   tf2_ros
   ackermann_msgs
+  control_msgs
 )
 
 ament_target_dependencies(map_publisher
