@@ -8,7 +8,8 @@
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
-#include "ackermann_msgs/msg/ackermann_drive.hpp"
+#include "ackermann_msgs/msg/ackermann_drive_stamped.hpp"
+#include "control_msgs/msg/car_state.hpp"
 
 using namespace std::chrono_literals; // Use chrono literals for timing
 
@@ -20,10 +21,10 @@ private:
 	std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 	rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr init_pose_sub_;
 	rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_pose_sub_;
-	rclcpp::Subscription<ackermann_msgs::msg::AckermannDrive>::SharedPtr drive0_sub_;
-	rclcpp::Subscription<ackermann_msgs::msg::AckermannDrive>::SharedPtr drive1_sub_;
-	rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr state0_pub_;
-	rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr state1_pub_;
+	rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive0_sub_;
+	rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive1_sub_;
+	rclcpp::Publisher<control_msgs::msg::CarState>::SharedPtr state0_pub_;
+	rclcpp::Publisher<control_msgs::msg::CarState>::SharedPtr state1_pub_;
 
 	struct CarState
 	{
@@ -161,14 +162,14 @@ public:
 		goal_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
 			"goal_pose", 1, std::bind(&RacecarSimulator::car1RvizCallback, this, std::placeholders::_1));
 
-		drive0_sub_ = this->create_subscription<ackermann_msgs::msg::AckermannDrive>(
+		drive0_sub_ = this->create_subscription<ackermann_msgs::msg::AckermannDriveStamped>(
 			drive_topic0_, 1, std::bind(&RacecarSimulator::drive0Callback, this, std::placeholders::_1));
 
-		drive1_sub_ = this->create_subscription<ackermann_msgs::msg::AckermannDrive>(
+		drive1_sub_ = this->create_subscription<ackermann_msgs::msg::AckermannDriveStamped>(
 			drive_topic1_, 1, std::bind(&RacecarSimulator::drive1Callback, this, std::placeholders::_1));
 
-		state0_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>(state_topic0_, 10);
-		state1_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>(state_topic1_, 10);
+		state0_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic0_, 10);
+		state1_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic1_, 10);
 
 		// Initialize car states
 		initCars();
@@ -263,6 +264,9 @@ public:
 		car_state0_.y = msg->pose.pose.position.y;
 		car_state0_.yaw = yaw;
 		car_state0_.v = 0.0;
+		car_state0_.a = 0.0;
+		car_state0_.accel = 0.0;
+		desired_accel0_ = 0.0;
 
 		publishTransform("map", "base_link0", car_state0_.x, car_state0_.y, car_state0_.yaw);
 
@@ -293,23 +297,38 @@ public:
 	}
 
 	// Callback for drive command of car0
-	void drive0Callback(const ackermann_msgs::msg::AckermannDrive::SharedPtr msg)
+	void drive0Callback(const ackermann_msgs::msg::AckermannDriveStamped::SharedPtr msg)
 	{
-		desired_accel0_ = msg->acceleration;
-		desired_steer_ang0_ = msg->steering_angle;
+		desired_accel0_ = msg->drive.acceleration;
+		desired_steer_ang0_ = msg->drive.steering_angle;
 	}
 
 	// Callback for drive command of car1
-	void drive1Callback(const ackermann_msgs::msg::AckermannDrive::SharedPtr msg)
+	void drive1Callback(const ackermann_msgs::msg::AckermannDriveStamped::SharedPtr msg)
 	{
-		desired_accel1_ = msg->acceleration;
-		desired_steer_ang1_ = msg->steering_angle;
+		desired_accel1_ = msg->drive.acceleration;
+		desired_steer_ang1_ = msg->drive.steering_angle;
 	}
 
 	// Publish state of car0
 	void state0Publisher()
 	{
 		// To do : implement with custum message
+		control_msgs::msg::CarState state;
+		state.x = car_state0_.x;
+		state.y = car_state0_.y;
+		state.yaw = car_state0_.yaw;
+		state.v = car_state0_.v;
+		state.vx = car_state0_.vx;
+		state.vy = car_state0_.vy;
+		state.omega = car_state0_.omega;
+		state.a = car_state0_.a;
+		state.ax = car_state0_.ax;
+		state.ay = car_state0_.ay;
+		state.accel = car_state0_.accel;
+		state.steer = car_state0_.steer;
+		state.slip_angle = car_state0_.slip_angle;
+		state0_pub_->publish(state);
 	}
 
 	// Publish state of car1
@@ -431,6 +450,24 @@ public:
 		else if (end.yaw < -M_PI)
 		{
 			end.yaw += 2 * M_PI;
+		}
+
+		while (end.slip_angle > M_PI)
+		{
+			end.slip_angle -= 2 * M_PI;
+		}
+		while (end.slip_angle < -M_PI)
+		{
+			end.slip_angle += 2 * M_PI;
+		}
+
+		while (end.omega > M_PI)
+		{
+			end.omega -= 2 * M_PI;
+		}
+		while (end.omega < -M_PI)
+		{
+			end.omega += 2 * M_PI;
 		}
 
 		return end;
