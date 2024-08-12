@@ -106,7 +106,9 @@ int main(int argc, char *argv[])
     {
         for (int x = 0; x < width; ++x)
         {
-            uint8_t pixel = pgm_data[x + y * width];
+            // 반전된 Y값 사용
+            int reversed_y = height - 1 - y;
+            uint8_t pixel = pgm_data[x + reversed_y * width];
             int index = x + y * width;
 
             if (pixel == 205)
