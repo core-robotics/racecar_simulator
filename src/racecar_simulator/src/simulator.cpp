@@ -409,9 +409,9 @@ public:
 		double v_dot = accel;
 		double steer_angle_dot = steer_vel;
 		double theta_dot = start.v / (p.l_f + p.l_r) * std::tan(start.steer);
-		double theta_double_dot = accel / (p.l_f + p.l_r) * std::tan(start.steer) +
-									start.v * steer_vel / ((p.l_f + p.l_r) * std::pow(std::cos(start.steer), 2));
-		double slip_angle_dot = 0;
+		// double theta_double_dot = accel / (p.l_f + p.l_r) * std::tan(start.steer) +
+		// 							start.v * steer_vel / ((p.l_f + p.l_r) * std::pow(std::cos(start.steer), 2));
+		// double slip_angle_dot = 0;
 
 		// update state
 		end.x = start.x + x_dot * dt;
