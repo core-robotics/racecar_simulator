@@ -26,14 +26,14 @@ private:
 	rclcpp::Publisher<control_msgs::msg::CarState>::SharedPtr state0_pub_;
 	rclcpp::Publisher<control_msgs::msg::CarState>::SharedPtr state1_pub_;
 
-	struct CarState
-	{
-		double x, y, yaw, slip_angle;
-		double v, vx, vy, omega;
-		double a, ax, ay;
-		double accel, steer;
-	};
-	CarState car_state0_, car_state1_;
+	// struct CarState
+	// {
+	// 	double x, y, yaw, slip_angle;
+	// 	double v, vx, vy, omega;
+	// 	double a, ax, ay;
+	// 	double accel, steer;
+	// };
+	control_msgs::msg::CarState car_state0_, car_state1_;
 
 	struct CarParams
 	{
@@ -76,12 +76,12 @@ public:
 		this->declare_parameter("B_r0", 1.5);
 		this->declare_parameter("C_r0", 1.5);
 		this->declare_parameter("D_r0", 30.0);
-		this->declare_parameter("steer_max0", 0.4);
-		this->declare_parameter("steer_vel_max0", 0.041);
+		this->declare_parameter("steer_max0", 4.0);
+		this->declare_parameter("steer_vel_max0", 4.0);
 		this->declare_parameter("speed_max0", 10.0);
-		this->declare_parameter("accel_max0", 4.0);
-		this->declare_parameter("decel_max0", 4.0);
-		this->declare_parameter("jerk_max0", 1.0);
+		this->declare_parameter("accel_max0", 40.0);
+		this->declare_parameter("decel_max0", 40.0);
+		this->declare_parameter("jerk_max0", 100.0);
 
 		this->get_parameter("drive_topic0", drive_topic0_);
 		this->get_parameter("state_topic0", state_topic0_);
@@ -172,17 +172,17 @@ public:
 		state1_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic1_, 10);
 
 		// Initialize car states
-		initCars();
+		// initCars();
 	}
 
 	// Initialize car states to default values
-	void initCars()
-	{
-		// Initialize car0
-		car_state0_ = {2.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-		// Initialize car1
-		car_state1_ = {4.0, -3.0, -1.4, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-	}
+	// void initCars()
+	// {
+	// 	// Initialize car0
+	// 	car_state0_ = {2.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+	// 	// Initialize car1
+	// 	car_state1_ = {4.0, -3.0, -1.4, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+	// }
 
 	// Simulator loop for updating car states
 	void simulatorLoop()
@@ -267,6 +267,7 @@ public:
 		car_state0_.a = 0.0;
 		car_state0_.accel = 0.0;
 		desired_accel0_ = 0.0;
+		car_state0_.steer = 0.0;
 
 		publishTransform("map", "base_link0", car_state0_.x, car_state0_.y, car_state0_.yaw);
 
@@ -291,6 +292,10 @@ public:
 		car_state1_.y = msg->pose.position.y;
 		car_state1_.yaw = yaw;
 		car_state1_.v = 0.0;
+		car_state1_.a = 0.0;
+		car_state1_.accel = 0.0;
+		desired_accel1_ = 0.0;
+		car_state1_.steer = 0.0;
 
 		publishTransform("map", "base_link1", car_state1_.x, car_state1_.y, car_state1_.yaw);
 		RCLCPP_INFO(this->get_logger(), "\nCar1 x: %f, y: %f, yaw: %f", car_state1_.x, car_state1_.y, car_state1_.yaw);
@@ -337,7 +342,7 @@ public:
 		// To do : implement with custum message
 	}
 
-	void setInput(CarState &state, double desired_accel, double desired_steer_ang)
+	void setInput(control_msgs::msg::CarState &state, double desired_accel, double desired_steer_ang)
 	{
 
 		double dt = 1.0 / simulator_frequency_;
@@ -394,21 +399,52 @@ public:
 		}
 	}
 
-	// Update car0 state
-	CarState updateState(CarState &start)
+	control_msgs::msg::CarState update_k(const control_msgs::msg::CarState start, double accel, double steer_vel, CarParams p, double dt)
 	{
+		control_msgs::msg::CarState end;
+
+		// compute first derivatives of state
+		double x_dot = start.v * std::cos(start.yaw);
+		double y_dot = start.v * std::sin(start.yaw);
+		double v_dot = accel;
+		double steer_angle_dot = steer_vel;
+		double theta_dot = start.v / (p.l_f + p.l_r) * std::tan(start.steer);
+		double theta_double_dot = accel / (p.l_f + p.l_r) * std::tan(start.steer) +
+									start.v * steer_vel / ((p.l_f + p.l_r) * std::pow(std::cos(start.steer), 2));
+		double slip_angle_dot = 0;
+
+		// update state
+		end.x = start.x + x_dot * dt;
+		end.y = start.y + y_dot * dt;
+		end.yaw = start.yaw + theta_dot * dt;
+		end.v = start.v + v_dot * dt;
+		end.steer = start.steer + steer_angle_dot * dt;
+		end.omega = 0; // start.angular_velocity + theta_double_dot * dt;
+		end.slip_angle = 0;       // start.slip_angle + slip_angle_dot * dt;
+
+		if (end.yaw > M_PI)
+			end.yaw -= 2 * M_PI;
+		else if (end.yaw < -M_PI)
+			end.yaw += 2 * M_PI;
+
+		return end;
+	}
+
+	// Update car0 state
+	control_msgs::msg::CarState updateState(control_msgs::msg::CarState &start)
+	{
+		if(abs(start.v) < 1.0e-8)
+		{
+			return update_k(start, start.accel, start.steer_vel, car0_params_, 1.0 / simulator_frequency_);
+		}
 		// Implement the update function for car0
-		CarState end;
+		control_msgs::msg::CarState end;
 		double dt = 1.0 / simulator_frequency_;
 		double a_f = -atan2(start.vy + car0_params_.l_f * start.omega, start.vx) + start.steer;
 		double F_fy = car0_params_.D_f * sin(car0_params_.C_f * atan(car0_params_.B_f * a_f));
 		double a_r = -atan2(start.vy - car0_params_.l_r * start.omega, start.vx);
 		double F_ry = car0_params_.D_r * sin(car0_params_.C_r * atan(car0_params_.B_r * a_r));
 		// double F_x = start.accel;
-		if(abs(start.v)<1.0e-8)
-		{
-			start.v =1.0e-8;
-		}
 
 		double x_dot = start.v * cos(start.yaw + start.slip_angle);
 		double y_dot = start.v * sin(start.yaw + start.slip_angle);
@@ -461,14 +497,14 @@ public:
 			end.slip_angle += 2 * M_PI;
 		}
 
-		while (end.omega > M_PI)
-		{
-			end.omega -= 2 * M_PI;
-		}
-		while (end.omega < -M_PI)
-		{
-			end.omega += 2 * M_PI;
-		}
+		// while (end.omega > M_PI)
+		// {
+		// 	end.omega -= 2 * M_PI;
+		// }
+		// while (end.omega < -M_PI)
+		// {
+		// 	end.omega += 2 * M_PI;
+		// }
 
 		return end;
 	}
