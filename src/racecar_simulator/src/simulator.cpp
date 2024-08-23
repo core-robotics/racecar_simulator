@@ -47,7 +47,7 @@ private:
 	CarParams car0_params_, car1_params_;
 
 	std::string drive_topic0_, state_topic0_, drive_topic1_, state_topic1_;
-	double simulator_frequency_, pub_frequency_, friction_coefficient_;
+	double simulator_frequency_, pub_frequency_;
 
 	double desired_speed0_, desired_accel0_, desired_steer_ang0_;
 	double desired_speed1_, desired_accel1_, desired_steer_ang1_;
@@ -61,11 +61,9 @@ public:
 		// General parameters
 		this->declare_parameter("simulator_frequency", 1000.0);
 		this->declare_parameter("pub_frequency", 40.0);
-		this->declare_parameter("friction_coefficient", 0.8);
 
 		this->get_parameter("simulator_frequency", simulator_frequency_);
 		this->get_parameter("pub_frequency", pub_frequency_);
-		this->get_parameter("friction_coefficient", friction_coefficient_);
 
 		// Car0 parameters
 		this->declare_parameter("drive_topic0", "ackermann_cmd0");
@@ -193,10 +191,10 @@ public:
 	// Simulator loop for updating car states
 	void simulatorLoop()
 	{
-		setInput(car_state0_, desired_accel0_, desired_steer_ang0_);
-		setInput(car_state1_, desired_accel1_, desired_steer_ang1_);
-		car_state0_ = updateState(car_state0_);
-		car_state1_ = updateState(car_state1_);
+		setInput(car_state0_, desired_accel0_, desired_steer_ang0_, car0_params_);
+		setInput(car_state1_, desired_accel1_, desired_steer_ang1_, car1_params_);
+		car_state0_ = updateState(car_state0_, car0_params_);
+		car_state1_ = updateState(car_state1_, car1_params_);
 		setTF();
 	}
 
@@ -323,52 +321,22 @@ public:
 	// Publish state of car0
 	void state0Publisher()
 	{
-		// To do : implement with custum message
-		control_msgs::msg::CarState state;
-		state.px = car_state0_.px;
-		state.py = car_state0_.py;
-		state.yaw = car_state0_.yaw;
-		state.v = car_state0_.v;
-		state.vx = car_state0_.vx;
-		state.vy = car_state0_.vy;
-		state.omega = car_state0_.omega;
-		state.a = car_state0_.a;
-		state.ax = car_state0_.ax;
-		state.ay = car_state0_.ay;
-		state.accel = car_state0_.accel;
-		state.steer = car_state0_.steer;
-		state.slip_angle = car_state0_.slip_angle;
-		state0_pub_->publish(state);
+		state0_pub_->publish(car_state0_);
 	}
 
 	// Publish state of car1
 	void state1Publisher()
 	{
-		// To do : implement with custum message
-		control_msgs::msg::CarState state;
-		state.px = car_state1_.px;
-		state.py = car_state1_.py;
-		state.yaw = car_state1_.yaw;
-		state.v = car_state1_.v;
-		state.vx = car_state1_.vx;
-		state.vy = car_state1_.vy;
-		state.omega = car_state1_.omega;
-		state.a = car_state1_.a;
-		state.ax = car_state1_.ax;
-		state.ay = car_state1_.ay;
-		state.accel = car_state1_.accel;
-		state.steer = car_state1_.steer;
-		state.slip_angle = car_state1_.slip_angle;
-		state1_pub_->publish(state);
+		state1_pub_->publish(car_state1_);
 	}
 
-	void setInput(control_msgs::msg::CarState &state, double desired_accel, double desired_steer_ang)
+	void setInput(control_msgs::msg::CarState &state, double desired_accel, double desired_steer_ang, CarParams car_params)
 	{
 
 		double dt = 1.0 / simulator_frequency_;
 		double steer_diff = desired_steer_ang - state.steer;
 		double steer_diff_abs = std::abs(steer_diff);
-		double steer_change_max = car0_params_.steer_vel_max * dt;
+		double steer_change_max = car_params.steer_vel_max * dt;
 
 		if (steer_diff_abs > steer_change_max)
 		{
@@ -379,18 +347,18 @@ public:
 			state.steer += steer_diff;
 		}
 
-		if (state.steer > car0_params_.steer_max)
+		if (state.steer > car_params.steer_max)
 		{
-			state.steer = car0_params_.steer_max;
+			state.steer = car_params.steer_max;
 		}
-		else if (state.steer < -car0_params_.steer_max)
+		else if (state.steer < -car_params.steer_max)
 		{
-			state.steer = -car0_params_.steer_max;
+			state.steer = -car_params.steer_max;
 		}
 
 		double accel_diff = desired_accel - state.accel;
 		double accel_diff_abs = std::abs(accel_diff);
-		double accel_change_max = car0_params_.jerk_max * dt;
+		double accel_change_max = car_params.jerk_max * dt;
 
 		if (accel_diff_abs > accel_change_max)
 		{
@@ -401,13 +369,13 @@ public:
 			state.accel += accel_diff;
 		}
 
-		if (state.accel > car0_params_.accel_max)
+		if (state.accel > car_params.accel_max)
 		{
-			state.accel = car0_params_.accel_max;
+			state.accel = car_params.accel_max;
 		}
-		else if (state.accel < -car0_params_.decel_max)
+		else if (state.accel < -car_params.decel_max)
 		{
-			state.accel = -car0_params_.decel_max;
+			state.accel = -car_params.decel_max;
 		}
 
 		// Check for NaN values
@@ -450,28 +418,27 @@ public:
 		return end;
 	}
 
-	// Update car0 state
-	control_msgs::msg::CarState updateState(control_msgs::msg::CarState &start)
+	// Update car state
+	control_msgs::msg::CarState updateState(control_msgs::msg::CarState &start, CarParams car_params)
 	{
 		if (abs(start.v) < 1.0e-8)
 		{
-			return update_k(start, start.accel, start.steer_vel, car0_params_, 1.0 / simulator_frequency_);
+			return update_k(start, start.accel, start.steer_vel, car_params, 1.0 / simulator_frequency_);
 		}
-		// Implement the update function for car0
+		// Implement the update function for car
 		control_msgs::msg::CarState end;
 		double dt = 1.0 / simulator_frequency_;
-		double a_f = -atan2(start.vy + car0_params_.l_f * start.omega, start.vx) + start.steer;
-		double F_fy = car0_params_.D_f * sin(car0_params_.C_f * atan(car0_params_.B_f * a_f));
-		double a_r = -atan2(start.vy - car0_params_.l_r * start.omega, start.vx);
-		double F_ry = car0_params_.D_r * sin(car0_params_.C_r * atan(car0_params_.B_r * a_r));
-		// double F_x = start.accel;
+		double a_f = -atan2(start.vy + car_params.l_f * start.omega, start.vx) + start.steer;
+		double F_fy = car_params.D_f * sin(car_params.C_f * atan(car_params.B_f * a_f));
+		double a_r = -atan2(start.vy - car_params.l_r * start.omega, start.vx);
+		double F_ry = car_params.D_r * sin(car_params.C_r * atan(car_params.B_r * a_r));
 
 		double x_dot = start.v * cos(start.yaw + start.slip_angle);
 		double y_dot = start.v * sin(start.yaw + start.slip_angle);
 		double yaw_dot = start.omega;
-		double slip_angle_dot = ((F_fy + F_ry) / (car0_params_.mass * start.v)) - start.omega;
+		double slip_angle_dot = ((F_fy + F_ry) / (car_params.mass * start.v)) - start.omega;
 		double v_dot = start.a;
-		double omega_dot = (car0_params_.l_f * F_fy * cos(start.steer) - car0_params_.l_r * F_ry) / car0_params_.I_z;
+		double omega_dot = (car_params.l_f * F_fy * cos(start.steer) - car_params.l_r * F_ry) / car_params.I_z;
 
 		end.px = start.px + x_dot * dt;
 		end.py = start.py + y_dot * dt;
@@ -490,13 +457,13 @@ public:
 		end.accel = start.accel;
 		end.steer = start.steer;
 
-		if (end.v > car0_params_.speed_max)
+		if (end.v > car_params.speed_max)
 		{
-			end.v = car0_params_.speed_max;
+			end.v = car_params.speed_max;
 		}
-		else if (end.v < -car0_params_.speed_max)
+		else if (end.v < -car_params.speed_max)
 		{
-			end.v = -car0_params_.speed_max;
+			end.v = -car_params.speed_max;
 		}
 
 		if (end.yaw > M_PI)
@@ -516,15 +483,6 @@ public:
 		{
 			end.slip_angle += 2 * M_PI;
 		}
-
-		// while (end.omega > M_PI)
-		// {
-		// 	end.omega -= 2 * M_PI;
-		// }
-		// while (end.omega < -M_PI)
-		// {
-		// 	end.omega += 2 * M_PI;
-		// }
 
 		return end;
 	}
