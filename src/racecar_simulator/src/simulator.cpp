@@ -346,8 +346,8 @@ public:
 	{
 		// To do : implement with custum message
 		control_msgs::msg::CarState state;
-		state.x = car_state1_.x;
-		state.y = car_state1_.y;
+		state.px = car_state1_.px;
+		state.py = car_state1_.py;
 		state.yaw = car_state1_.yaw;
 		state.v = car_state1_.v;
 		state.vx = car_state1_.vx;
