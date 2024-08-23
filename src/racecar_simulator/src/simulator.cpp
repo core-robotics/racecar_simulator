@@ -242,11 +242,11 @@ public:
 
 	void setTF()
 	{
-		publishTransform("map", "base_link0", car_state0_.x, car_state0_.y, car_state0_.yaw);
+		publishTransform("map", "base_link0", car_state0_.px, car_state0_.py, car_state0_.yaw);
 		publishTransform("front_left_hinge0", "front_left_wheel0", 0.0, 0.0, car_state0_.steer);
 		publishTransform("front_right_hinge0", "front_right_wheel0", 0.0, 0.0, car_state0_.steer);
 
-		publishTransform("map", "base_link1", car_state1_.x, car_state1_.y, car_state1_.yaw);
+		publishTransform("map", "base_link1", car_state1_.px, car_state1_.py, car_state1_.yaw);
 		publishTransform("front_left_hinge1", "front_left_wheel1", 0.0, 0.0, car_state1_.steer);
 		publishTransform("front_right_hinge1", "front_right_wheel1", 0.0, 0.0, car_state1_.steer);
 	}
@@ -265,8 +265,8 @@ public:
 		double roll, pitch, yaw;
 		m.getRPY(roll, pitch, yaw);
 
-		car_state0_.x = msg->pose.pose.position.x;
-		car_state0_.y = msg->pose.pose.position.y;
+		car_state0_.px = msg->pose.pose.position.x;
+		car_state0_.py = msg->pose.pose.position.y;
 		car_state0_.yaw = yaw;
 		car_state0_.v = 0.0;
 		car_state0_.a = 0.0;
@@ -274,9 +274,9 @@ public:
 		desired_accel0_ = 0.0;
 		car_state0_.steer = 0.0;
 
-		publishTransform("map", "base_link0", car_state0_.x, car_state0_.y, car_state0_.yaw);
+		publishTransform("map", "base_link0", car_state0_.px, car_state0_.py, car_state0_.yaw);
 
-		RCLCPP_INFO(this->get_logger(), "\nCar0 x: %f, y: %f, yaw: %f", car_state0_.x, car_state0_.y, car_state0_.yaw);
+		RCLCPP_INFO(this->get_logger(), "\nCar0 x: %f, y: %f, yaw: %f", car_state0_.px, car_state0_.py, car_state0_.yaw);
 	}
 
 	// Callback for initial pose of car1
@@ -293,8 +293,8 @@ public:
 		double roll, pitch, yaw;
 		m.getRPY(roll, pitch, yaw);
 
-		car_state1_.x = msg->pose.position.x;
-		car_state1_.y = msg->pose.position.y;
+		car_state1_.px = msg->pose.position.x;
+		car_state1_.py = msg->pose.position.y;
 		car_state1_.yaw = yaw;
 		car_state1_.v = 0.0;
 		car_state1_.a = 0.0;
@@ -302,8 +302,8 @@ public:
 		desired_accel1_ = 0.0;
 		car_state1_.steer = 0.0;
 
-		publishTransform("map", "base_link1", car_state1_.x, car_state1_.y, car_state1_.yaw);
-		RCLCPP_INFO(this->get_logger(), "\nCar1 x: %f, y: %f, yaw: %f", car_state1_.x, car_state1_.y, car_state1_.yaw);
+		publishTransform("map", "base_link1", car_state1_.px, car_state1_.py, car_state1_.yaw);
+		RCLCPP_INFO(this->get_logger(), "\nCar1 x: %f, y: %f, yaw: %f", car_state1_.px, car_state1_.py, car_state1_.yaw);
 	}
 
 	// Callback for drive command of car0
@@ -325,8 +325,8 @@ public:
 	{
 		// To do : implement with custum message
 		control_msgs::msg::CarState state;
-		state.x = car_state0_.x;
-		state.y = car_state0_.y;
+		state.px = car_state0_.px;
+		state.py = car_state0_.py;
 		state.yaw = car_state0_.yaw;
 		state.v = car_state0_.v;
 		state.vx = car_state0_.vx;
@@ -434,8 +434,8 @@ public:
 		// double slip_angle_dot = 0;
 
 		// update state
-		end.x = start.x + x_dot * dt;
-		end.y = start.y + y_dot * dt;
+		end.px = start.px + x_dot * dt;
+		end.py = start.py + y_dot * dt;
 		end.yaw = start.yaw + theta_dot * dt;
 		end.v = start.v + v_dot * dt;
 		end.steer = start.steer + steer_angle_dot * dt;
@@ -473,8 +473,8 @@ public:
 		double v_dot = start.a;
 		double omega_dot = (car0_params_.l_f * F_fy * cos(start.steer) - car0_params_.l_r * F_ry) / car0_params_.I_z;
 
-		end.x = start.x + x_dot * dt;
-		end.y = start.y + y_dot * dt;
+		end.px = start.px + x_dot * dt;
+		end.py = start.py + y_dot * dt;
 		end.yaw = start.yaw + yaw_dot * dt;
 		end.slip_angle = start.slip_angle + slip_angle_dot * dt;
 
