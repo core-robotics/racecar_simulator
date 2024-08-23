@@ -67,7 +67,7 @@ public:
 		this->declare_parameter("pub_frequency", 40.0);
 		this->declare_parameter("friction_coefficient", 0.8);
 		this->declare_parameter("scan_beams", 1080);
-		this->declare_parameter("scan_field_of_view", 2.0 * M_PI * 0.75);
+		this->declare_parameter("scan_field_of_view", 2.0 * M_PI );
 		this->declare_parameter("scan_std_dev", 0.01);
 		this->declare_parameter("map_free_threshold", 0.2);
 
@@ -225,8 +225,8 @@ public:
 	{
 		state0Publisher();
 		state1Publisher();
-		pub_scan(car_state0_, "scan0", "base_link0", scan0_pub_);
-		pub_scan(car_state1_, "scan1", "base_link1", scan1_pub_);
+		pub_scan(car_state0_,"scan0", scan0_pub_);
+		pub_scan(car_state1_,"scan1", scan1_pub_);
 	}
 
 	// Publish transform between frames
@@ -258,6 +258,8 @@ public:
 			RCLCPP_WARN(this->get_logger(), "Transformation contains NaN values and will be ignored.");
 			return;
 		}
+
+
 		// Send the transformation
 		tf_broadcaster_->sendTransform(t);
 	}
@@ -608,7 +610,6 @@ public:
 	// Publish scan data
 	void pub_scan(const control_msgs::msg::CarState &state,
 				  const std::string &scan_frame,
-				  const std::string &base_frame,
 				  rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan_pub)
 	{
 		if (!map_exists)
