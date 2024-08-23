@@ -28,7 +28,8 @@ private:
 	rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive0_sub_;
 	rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive1_sub_;
 	rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
-	rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan_pub_;
+	rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan0_pub_;
+	rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan1_pub_;
 	rclcpp::Publisher<control_msgs::msg::CarState>::SharedPtr state0_pub_;
 	rclcpp::Publisher<control_msgs::msg::CarState>::SharedPtr state1_pub_;
 
@@ -46,11 +47,15 @@ private:
 	};
 	CarParams car0_params_, car1_params_;
 
-	std::string drive_topic0_, state_topic0_, drive_topic1_, state_topic1_;
+	std::string drive_topic0_, state_topic0_, drive_topic1_, state_topic1_, scan_topic0_, scan_topic1_;
 	double simulator_frequency_, pub_frequency_;
+
 
 	double desired_speed0_, desired_accel0_, desired_steer_ang0_;
 	double desired_speed1_, desired_accel1_, desired_steer_ang1_;
+	double scan_fov_, scan_std_dev_;
+	int scan_beams_;
+	double map_free_threshold_;
 
 	bool map_exists = false;
 
@@ -61,13 +66,23 @@ public:
 		// General parameters
 		this->declare_parameter("simulator_frequency", 1000.0);
 		this->declare_parameter("pub_frequency", 40.0);
+		this->declare_parameter("scan_beams", 1080);
+		this->declare_parameter("scan_field_of_view", 2.0 * M_PI );
+		this->declare_parameter("scan_std_dev", 0.01);
+		this->declare_parameter("map_free_threshold", 0.2);
 
 		this->get_parameter("simulator_frequency", simulator_frequency_);
 		this->get_parameter("pub_frequency", pub_frequency_);
+		this->get_parameter("scan_beams", scan_beams_);
+		this->get_parameter("scan_field_of_view", scan_fov_);
+		this->get_parameter("scan_std_dev", scan_std_dev_);
+		this->get_parameter("map_free_threshold", map_free_threshold_);
+
 
 		// Car0 parameters
 		this->declare_parameter("drive_topic0", "ackermann_cmd0");
 		this->declare_parameter("state_topic0", "state0");
+		this->declare_parameter("scan_topic0", "scan0");
 		this->declare_parameter("mass0", 3.5);
 		this->declare_parameter("l_r0", 0.17145);
 		this->declare_parameter("l_f0", 0.17145);
@@ -87,6 +102,7 @@ public:
 
 		this->get_parameter("drive_topic0", drive_topic0_);
 		this->get_parameter("state_topic0", state_topic0_);
+		this->get_parameter("scan_topic0", scan_topic0_);
 		this->get_parameter("mass0", car0_params_.mass);
 		this->get_parameter("l_r0", car0_params_.l_r);
 		this->get_parameter("l_f0", car0_params_.l_f);
@@ -107,6 +123,7 @@ public:
 		// Car1 parameters
 		this->declare_parameter("drive_topic1", "ackermann_cmd1");
 		this->declare_parameter("state_topic1", "state1");
+		this->declare_parameter("scan_topic1", "scan1");
 		this->declare_parameter("mass1", 3.5);
 		this->declare_parameter("l_r1", 0.17145);
 		this->declare_parameter("l_f1", 0.17145);
@@ -126,6 +143,7 @@ public:
 
 		this->get_parameter("drive_topic1", drive_topic1_);
 		this->get_parameter("state_topic1", state_topic1_);
+		this->get_parameter("scan_topic1", scan_topic1_);
 		this->get_parameter("mass1", car1_params_.mass);
 		this->get_parameter("l_r1", car1_params_.l_r);
 		this->get_parameter("l_f1", car1_params_.l_f);
@@ -172,9 +190,13 @@ public:
 
 		map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
 			"map", 1, std::bind(&RacecarSimulator::mapCallback, this, std::placeholders::_1));
+
+		scan0_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic0_, 100);
+		scan1_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic1_, 100);
 		state0_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic0_, 10);
 		state1_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic1_, 10);
 
+		scan_simulator_ = ScanSimulator2D(scan_beams_, scan_fov_, scan_std_dev_);
 		// Initialize car states
 		// initCars();
 	}
@@ -203,6 +225,8 @@ public:
 	{
 		state0Publisher();
 		state1Publisher();
+		pub_scan(car_state0_,"scan0", scan0_pub_);
+		pub_scan(car_state1_,"scan1", scan1_pub_);
 	}
 
 	// Publish transform between frames
@@ -234,6 +258,8 @@ public:
 			RCLCPP_WARN(this->get_logger(), "Transformation contains NaN values and will be ignored.");
 			return;
 		}
+
+
 		// Send the transformation
 		tf_broadcaster_->sendTransform(t);
 	}
@@ -243,10 +269,13 @@ public:
 		publishTransform("map", "base_link0", car_state0_.px, car_state0_.py, car_state0_.yaw);
 		publishTransform("front_left_hinge0", "front_left_wheel0", 0.0, 0.0, car_state0_.steer);
 		publishTransform("front_right_hinge0", "front_right_wheel0", 0.0, 0.0, car_state0_.steer);
+		publishTransform("base_link0", "scan0", 0.275, 0.0, 0.0);
+
 
 		publishTransform("map", "base_link1", car_state1_.px, car_state1_.py, car_state1_.yaw);
 		publishTransform("front_left_hinge1", "front_left_wheel1", 0.0, 0.0, car_state1_.steer);
 		publishTransform("front_right_hinge1", "front_right_wheel1", 0.0, 0.0, car_state1_.steer);
+		publishTransform("base_link1", "scan1", 0.275, 0.0, 0.0);
 	}
 
 	// Callback for initial pose of car0
@@ -509,7 +538,6 @@ public:
 		double roll, pitch, yaw;
 		mat.getRPY(roll, pitch, yaw);
 		origin.theta = yaw;
-		
 
 		// 데이터 크기 검사
 		if (msg->data.size() != height * width)
@@ -537,6 +565,47 @@ public:
 		scan_simulator_.set_map(map, height, width, resolution, origin, map_free_threshold);
 
 		map_exists = true;
+	}
+
+	// Publish scan data
+	void pub_scan(const control_msgs::msg::CarState &state,
+				  const std::string &scan_frame,
+				  rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan_pub)
+	{
+		if (!map_exists)
+		{
+			return;
+		}
+
+		// Get scan data
+		Pose2D scan_pose;
+		double scan_distance_to_base_link = 0.275;
+		scan_pose.x = state.px + scan_distance_to_base_link * cos(state.yaw);
+		scan_pose.y = state.py + scan_distance_to_base_link * sin(state.yaw);
+		scan_pose.theta = state.yaw;
+
+		std::vector<double> scan_data = scan_simulator_.scan(scan_pose);
+
+		// convert to float
+		std::vector<float> scan_data_float(scan_data.size());
+		for (size_t i = 0; i < scan_data.size(); i++)
+		{
+			scan_data_float[i] = scan_data[i];
+		}
+		sensor_msgs::msg::LaserScan scan_msg;
+		scan_msg.header.stamp = this->get_clock()->now();
+		scan_msg.header.frame_id = scan_frame;
+		scan_msg.angle_min = -scan_simulator_.get_field_of_view() / 2;
+		scan_msg.angle_max = scan_simulator_.get_field_of_view() / 2;
+		scan_msg.angle_increment = scan_simulator_.get_angle_increment();
+		scan_msg.range_max = 10.0;
+		scan_msg.range_min = 0.1;
+		scan_msg.ranges = scan_data_float;
+		scan_msg.intensities = std::vector<float>(scan_data.size(), 0.0);
+		scan_msg.time_increment = 0.0;
+		scan_msg.scan_time = 1.0 / pub_frequency_;
+		scan_pub->publish(scan_msg);
+		
 	}
 };
 

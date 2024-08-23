@@ -16,11 +16,12 @@ def generate_launch_description():
     pkg_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
     # Define the path to the map server parameters file
-    map_yaml = os.path.join(pkg_dir, "maps", "c_track.yaml")
-    map_pgm = os.path.join(pkg_dir, "maps", "c_track.pgm")
+    map_yaml = os.path.join(pkg_dir, "maps", "map7.yaml")
+    map_pgm = os.path.join(pkg_dir, "maps", "map7.pgm")
 
     # Define the path to the rviz configuration file
     rviz_config_file = os.path.join(pkg_dir, "params", "simulator.rviz")
+    simulation_config_file = os.path.join(pkg_dir, "params", "simulation.yaml")
 
     # # Define the path to the robot description file
     car0_xacro_file = os.path.join(pkg_dir, "params", "racecar0.xacro")
@@ -61,6 +62,7 @@ def generate_launch_description():
         executable="simulator",
         name="racecar_simulator",
         output="screen",
+        parameters=[simulation_config_file],
     )
 
     map_publisher_node = Node(
