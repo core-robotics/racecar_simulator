@@ -10,8 +10,12 @@
 #include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
 #include "ackermann_msgs/msg/ackermann_drive_stamped.hpp"
 #include "control_msgs/msg/car_state.hpp"
+#include "nav_msgs/msg/occupancy_grid.hpp"
+#include "sensor_msgs/msg/laser_scan.hpp"
+#include "racecar_simulator/scan_simulator_2d.hpp"
 
 using namespace std::chrono_literals; // Use chrono literals for timing
+using namespace racecar_simulator;
 
 class RacecarSimulator : public rclcpp::Node
 {
@@ -23,17 +27,15 @@ private:
 	rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_pose_sub_;
 	rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive0_sub_;
 	rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive1_sub_;
+	rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
+	rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan_pub_;
 	rclcpp::Publisher<control_msgs::msg::CarState>::SharedPtr state0_pub_;
 	rclcpp::Publisher<control_msgs::msg::CarState>::SharedPtr state1_pub_;
 
-	// struct CarState
-	// {
-	// 	double x, y, yaw, slip_angle;
-	// 	double v, vx, vy, omega;
-	// 	double a, ax, ay;
-	// 	double accel, steer;
-	// };
 	control_msgs::msg::CarState car_state0_, car_state1_;
+
+	ScanSimulator2D scan_simulator_;
+	double map_free_threshold;
 
 	struct CarParams
 	{
@@ -49,6 +51,8 @@ private:
 
 	double desired_speed0_, desired_accel0_, desired_steer_ang0_;
 	double desired_speed1_, desired_accel1_, desired_steer_ang1_;
+
+	bool map_exists = false;
 
 public:
 	RacecarSimulator()
@@ -168,6 +172,8 @@ public:
 		drive1_sub_ = this->create_subscription<ackermann_msgs::msg::AckermannDriveStamped>(
 			drive_topic1_, 1, std::bind(&RacecarSimulator::drive1Callback, this, std::placeholders::_1));
 
+		map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
+			"map", 1, std::bind(&RacecarSimulator::mapCallback, this, std::placeholders::_1));
 		state0_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic0_, 10);
 		state1_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic1_, 10);
 
@@ -192,7 +198,6 @@ public:
 		car_state0_ = updateState(car_state0_);
 		car_state1_ = updateState(car_state1_);
 		setTF();
-		
 	}
 
 	// Publisher loop for broadcasting car states
@@ -340,6 +345,21 @@ public:
 	void state1Publisher()
 	{
 		// To do : implement with custum message
+		control_msgs::msg::CarState state;
+		state.x = car_state1_.x;
+		state.y = car_state1_.y;
+		state.yaw = car_state1_.yaw;
+		state.v = car_state1_.v;
+		state.vx = car_state1_.vx;
+		state.vy = car_state1_.vy;
+		state.omega = car_state1_.omega;
+		state.a = car_state1_.a;
+		state.ax = car_state1_.ax;
+		state.ay = car_state1_.ay;
+		state.accel = car_state1_.accel;
+		state.steer = car_state1_.steer;
+		state.slip_angle = car_state1_.slip_angle;
+		state1_pub_->publish(state);
 	}
 
 	void setInput(control_msgs::msg::CarState &state, double desired_accel, double desired_steer_ang)
@@ -419,8 +439,8 @@ public:
 		end.yaw = start.yaw + theta_dot * dt;
 		end.v = start.v + v_dot * dt;
 		end.steer = start.steer + steer_angle_dot * dt;
-		end.omega = 0; // start.angular_velocity + theta_double_dot * dt;
-		end.slip_angle = 0;       // start.slip_angle + slip_angle_dot * dt;
+		end.omega = 0;		// start.angular_velocity + theta_double_dot * dt;
+		end.slip_angle = 0; // start.slip_angle + slip_angle_dot * dt;
 
 		if (end.yaw > M_PI)
 			end.yaw -= 2 * M_PI;
@@ -433,7 +453,7 @@ public:
 	// Update car0 state
 	control_msgs::msg::CarState updateState(control_msgs::msg::CarState &start)
 	{
-		if(abs(start.v) < 1.0e-8)
+		if (abs(start.v) < 1.0e-8)
 		{
 			return update_k(start, start.accel, start.steer_vel, car0_params_, 1.0 / simulator_frequency_);
 		}
@@ -507,6 +527,58 @@ public:
 		// }
 
 		return end;
+	}
+
+	// Callback for map
+	void mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg)
+	{
+		// 지도 파라미터 가져오기
+		size_t height = msg->info.height;
+		size_t width = msg->info.width;
+		double resolution = msg->info.resolution;
+
+		// ROS 원점을 Pose2D로 변환
+		Pose2D origin;
+		origin.x = msg->info.origin.position.x;
+		origin.y = msg->info.origin.position.y;
+
+		// 쿼터니언을 Yaw 각도로 변환
+		tf2::Quaternion quat(msg->info.origin.orientation.x,
+							 msg->info.origin.orientation.y,
+							 msg->info.origin.orientation.z,
+							 msg->info.origin.orientation.w);
+		tf2::Matrix3x3 mat(quat);
+		double roll, pitch, yaw;
+		mat.getRPY(roll, pitch, yaw);
+		origin.theta = yaw;
+		
+
+		// 데이터 크기 검사
+		if (msg->data.size() != height * width)
+		{
+			RCLCPP_ERROR(this->get_logger(), "Data size mismatch: expected %zu but got %zu", height * width, msg->data.size());
+			return;
+		}
+
+		// 지도를 확률 값으로 변환
+		std::vector<double> map(msg->data.size(), 0.5); // 기본값으로 0.5로 초기화
+		for (size_t i = 0; i < msg->data.size(); i++)
+		{
+			if (msg->data[i] > 100 || msg->data[i] < 0)
+			{
+				map[i] = 0.5; // 알 수 없는 영역으로 설정
+			}
+			else
+			{
+				map[i] = msg->data[i] / 100.0; // 0~100 사이 값을 확률로 변환
+			}
+		}
+
+		// 스캐너에 지도 전달
+		double map_free_threshold = 0.2; // 자유 공간 임계값 설정
+		scan_simulator_.set_map(map, height, width, resolution, origin, map_free_threshold);
+
+		map_exists = true;
 	}
 };
 
