@@ -49,7 +49,8 @@ private:
 
 	std::string drive_topic0_, state_topic0_, drive_topic1_, state_topic1_, scan_topic0_, scan_topic1_;
 	double simulator_frequency_, pub_frequency_;
-
+	bool state_noise_mode_ = false;
+	bool scan_noise_mode_ = false;
 
 	double desired_speed0_, desired_accel0_, desired_steer_ang0_;
 	double desired_speed1_, desired_accel1_, desired_steer_ang1_;
@@ -57,7 +58,7 @@ private:
 	int scan_beams_;
 	double map_free_threshold_;
 
-	bool map_exists = false;
+	bool map_exists_ = false;
 
 public:
 	RacecarSimulator()
@@ -67,9 +68,11 @@ public:
 		this->declare_parameter("simulator_frequency", 1000.0);
 		this->declare_parameter("pub_frequency", 40.0);
 		this->declare_parameter("scan_beams", 1080);
-		this->declare_parameter("scan_field_of_view", 2.0 * M_PI );
+		this->declare_parameter("scan_field_of_view", 2.0 * M_PI);
 		this->declare_parameter("scan_std_dev", 0.01);
 		this->declare_parameter("map_free_threshold", 0.2);
+		this->declare_parameter("state_noise_mode", false);
+		this->declare_parameter("scan_noise_mode", false);
 
 		this->get_parameter("simulator_frequency", simulator_frequency_);
 		this->get_parameter("pub_frequency", pub_frequency_);
@@ -77,7 +80,8 @@ public:
 		this->get_parameter("scan_field_of_view", scan_fov_);
 		this->get_parameter("scan_std_dev", scan_std_dev_);
 		this->get_parameter("map_free_threshold", map_free_threshold_);
-
+		this->get_parameter("state_noise_mode", state_noise_mode_);
+		this->get_parameter("scan_noise_mode", scan_noise_mode_);
 
 		// Car0 parameters
 		this->declare_parameter("drive_topic0", "ackermann_cmd0");
@@ -197,18 +201,7 @@ public:
 		state1_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic1_, 10);
 
 		scan_simulator_ = ScanSimulator2D(scan_beams_, scan_fov_, scan_std_dev_);
-		// Initialize car states
-		// initCars();
 	}
-
-	// Initialize car states to default values
-	// void initCars()
-	// {
-	// 	// Initialize car0
-	// 	car_state0_ = {2.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-	// 	// Initialize car1
-	// 	car_state1_ = {4.0, -3.0, -1.4, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-	// }
 
 	// Simulator loop for updating car states
 	void simulatorLoop()
@@ -225,8 +218,8 @@ public:
 	{
 		state0Publisher();
 		state1Publisher();
-		pub_scan(car_state0_,"scan0", scan0_pub_);
-		pub_scan(car_state1_,"scan1", scan1_pub_);
+		pub_scan(car_state0_, "laser_model0", scan0_pub_);
+		pub_scan(car_state1_, "laser_model1", scan1_pub_);
 	}
 
 	// Publish transform between frames
@@ -259,23 +252,22 @@ public:
 			return;
 		}
 
-
 		// Send the transformation
 		tf_broadcaster_->sendTransform(t);
 	}
 
 	void setTF()
 	{
+
 		publishTransform("map", "base_link0", car_state0_.px, car_state0_.py, car_state0_.yaw);
 		publishTransform("front_left_hinge0", "front_left_wheel0", 0.0, 0.0, car_state0_.steer);
 		publishTransform("front_right_hinge0", "front_right_wheel0", 0.0, 0.0, car_state0_.steer);
-		publishTransform("base_link0", "scan0", 0.275, 0.0, 0.0);
-
+		// publishTransform("base_link0", "scan0", -0.275, 0.0, 0.0);
 
 		publishTransform("map", "base_link1", car_state1_.px, car_state1_.py, car_state1_.yaw);
 		publishTransform("front_left_hinge1", "front_left_wheel1", 0.0, 0.0, car_state1_.steer);
 		publishTransform("front_right_hinge1", "front_right_wheel1", 0.0, 0.0, car_state1_.steer);
-		publishTransform("base_link1", "scan1", 0.275, 0.0, 0.0);
+		// publishTransform("base_link1", "scan1", -0.275, 0.0, 0.0);
 	}
 
 	// Callback for initial pose of car0
@@ -513,6 +505,25 @@ public:
 			end.slip_angle += 2 * M_PI;
 		}
 
+		if(state_noise_mode_)
+		{
+			end.px += gen_noise(0.1);
+			end.py += gen_noise(0.1);
+			end.yaw += gen_noise(0.001);
+			end.v += gen_noise(0.001);
+			end.vx += gen_noise(0.001);
+			end.vy += gen_noise(0.001);
+			end.omega += gen_noise(0.001);
+			end.a += gen_noise(0.001);
+			end.ax += gen_noise(0.001);
+			end.ay += gen_noise(0.001);
+			end.accel += gen_noise(0.001);
+			end.steer += gen_noise(0.001);
+			end.slip_angle += gen_noise(0.001);
+		}
+
+
+
 		return end;
 	}
 
@@ -564,7 +575,7 @@ public:
 		double map_free_threshold = 0.2; // 자유 공간 임계값 설정
 		scan_simulator_.set_map(map, height, width, resolution, origin, map_free_threshold);
 
-		map_exists = true;
+		map_exists_ = true;
 	}
 
 	// Publish scan data
@@ -572,17 +583,27 @@ public:
 				  const std::string &scan_frame,
 				  rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan_pub)
 	{
-		if (!map_exists)
+		if (!map_exists_)
 		{
 			return;
 		}
 
 		// Get scan data
 		Pose2D scan_pose;
-		double scan_distance_to_base_link = 0.275;
-		scan_pose.x = state.px + scan_distance_to_base_link * cos(state.yaw);
-		scan_pose.y = state.py + scan_distance_to_base_link * sin(state.yaw);
-		scan_pose.theta = state.yaw;
+		double scan_distance_to_base_link = 0.12;
+
+		if (scan_noise_mode_)
+		{
+			scan_pose.x = state.px + scan_distance_to_base_link * cos(state.yaw) + gen_noise(0.01);
+			scan_pose.y = state.py + scan_distance_to_base_link * sin(state.yaw) + gen_noise(0.01);
+			scan_pose.theta = state.yaw + gen_noise(0.01);
+		}
+		else
+		{
+			scan_pose.x = state.px + scan_distance_to_base_link * cos(state.yaw);
+			scan_pose.y = state.py + scan_distance_to_base_link * sin(state.yaw);
+			scan_pose.theta = state.yaw;
+		}
 
 		std::vector<double> scan_data = scan_simulator_.scan(scan_pose);
 
@@ -605,7 +626,16 @@ public:
 		scan_msg.time_increment = 0.0;
 		scan_msg.scan_time = 1.0 / pub_frequency_;
 		scan_pub->publish(scan_msg);
-		
+	}
+
+	double gen_noise(double std_dev)
+	{
+		double value = 0.0;
+		std::random_device rd;
+		std::mt19937 gen(rd());
+		std::normal_distribution<double> dist(0.0, std_dev);
+		value += dist(gen);
+		return value;
 	}
 };
 

@@ -109,10 +109,6 @@ Visualization Manager:
           Value: true
         map:
           Value: true
-        scan0:
-          Value: true
-        scan1:
-          Value: true
       Marker Scale: 1
       Name: TF
       Show Arrows: true
@@ -133,8 +129,6 @@ Visualization Manager:
                 {}
             laser_model0:
               {}
-            scan0:
-              {}
           base_link1:
             back_left_wheel1:
               {}
@@ -147,8 +141,6 @@ Visualization Manager:
               front_right_wheel1:
                 {}
             laser_model1:
-              {}
-            scan1:
               {}
       Update Interval: 0
       Value: true
@@ -418,25 +410,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 28.79859161376953
+      Distance: 25.955615997314453
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -4.611344814300537
-        Y: -4.712862014770508
-        Z: -0.002727985382080078
+        X: -2.559746265411377
+        Y: -4.488345146179199
+        Z: 0.12872745096683502
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.5697963237762451
+      Pitch: 1.5547963380813599
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 3.151576519012451
+      Yaw: 3.131575107574463
     Saved: ~
 Window Geometry:
   Displays:
@@ -454,5 +446,5 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 948
-  X: 1791
+  X: 1664
   Y: -32

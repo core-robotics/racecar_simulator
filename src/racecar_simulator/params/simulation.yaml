@@ -4,9 +4,11 @@ racecar_simulator:
     simulator_frequency: 1000.0         # Hz
     pub_frequency: 40.0                 # Hz
     scan_beams: 1080                    # number of beams in the lidar scan
-    scan_field_of_view: 4.71238898      # 270 degrees
-    scan_std_dev: 0.01
+    scan_field_of_view: 4.71238898      # rad    270 degrees
+    scan_std_dev: 0.01                  # m      standard deviation of the scan noise
     map_free_threshold: 0.2             # m
+    state_noise_mode: true              # add noise to the state
+    scan_noise_mode: true               # add noise to the scan
 
     # car1
     drive_topic0: "ackermann_cmd0"      # car1 control topic
