@@ -232,16 +232,21 @@ public:
 	// Publisher loop for broadcasting car states
 	void pubLoop()
 	{
-		state0Publisher();
-		state1Publisher();
-		pub_scan(car_state0_, "laser_model0", scan0_pub_);
-		pub_scan(car_state1_, "laser_model1", scan1_pub_);
+		// setInput(car_state0_, desired_accel0_, desired_steer_ang0_, car0_params_);
+		// setInput(car_state1_, desired_accel1_, desired_steer_ang1_, car1_params_);
+		// car_state0_ = updateState(car_state0_, car0_params_);
+		// car_state1_ = updateState(car_state1_, car1_params_);
 
 		current_map_ = original_map_;
 		current_map_ = mark_vehicle_on_grid(original_map_, car_state0_);
 		current_map_ = mark_vehicle_on_grid(current_map_, car_state1_);
-
+		pub_scan(car_state0_, "laser_model0", scan0_pub_);
+		pub_scan(car_state1_, "laser_model1", scan1_pub_);
+		state0Publisher();
+		state1Publisher();
+		
 		pub_map(current_map_);
+		// setTF();
 	}
 
 	// Publish transform between frames
@@ -284,12 +289,11 @@ public:
 		publishTransform("map", "base_link0", car_state0_.px, car_state0_.py, car_state0_.yaw);
 		publishTransform("front_left_hinge0", "front_left_wheel0", 0.0, 0.0, car_state0_.steer);
 		publishTransform("front_right_hinge0", "front_right_wheel0", 0.0, 0.0, car_state0_.steer);
-		// publishTransform("base_link0", "scan0", -0.275, 0.0, 0.0);
+		
 
 		publishTransform("map", "base_link1", car_state1_.px, car_state1_.py, car_state1_.yaw);
 		publishTransform("front_left_hinge1", "front_left_wheel1", 0.0, 0.0, car_state1_.steer);
 		publishTransform("front_right_hinge1", "front_right_wheel1", 0.0, 0.0, car_state1_.steer);
-		// publishTransform("base_link1", "scan1", -0.275, 0.0, 0.0);
 	}
 
 	// Callback for initial pose of car0
@@ -779,8 +783,8 @@ public:
 		double block_size = 0.2; // meters
 
 		// 월드 좌표계를 그리드 좌표계로 변환
-		int grid_x = (state.px - origin.position.x-0.2*cos(state.yaw)) / resolution;
-		int grid_y = (state.py - origin.position.y-0.2*sin(state.yaw)) / resolution;
+		int grid_x = (state.px - origin.position.x - 0.2 * cos(state.yaw)) / resolution;
+		int grid_y = (state.py - origin.position.y - 0.2 * sin(state.yaw)) / resolution;
 		int grid_block_size = block_size / resolution;
 
 		// 회전 행렬을 계산
