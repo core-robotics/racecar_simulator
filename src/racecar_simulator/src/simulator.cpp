@@ -517,19 +517,19 @@ public:
 
 		if (state_noise_mode_)
 		{
-			end.px += gen_noise(0.1);
-			end.py += gen_noise(0.1);
-			end.yaw += gen_noise(0.001);
-			end.v += gen_noise(0.001);
-			end.vx += gen_noise(0.001);
-			end.vy += gen_noise(0.001);
-			end.omega += gen_noise(0.001);
-			end.a += gen_noise(0.001);
-			end.ax += gen_noise(0.001);
-			end.ay += gen_noise(0.001);
-			end.accel += gen_noise(0.001);
-			end.steer += gen_noise(0.001);
-			end.slip_angle += gen_noise(0.001);
+			end.px += gen_noise(0.0001);
+			end.py += gen_noise(0.0001);
+			end.yaw += gen_noise(0.0001);
+			end.v += gen_noise(0.0001);
+			end.vx += gen_noise(0.0001);
+			end.vy += gen_noise(0.0001);
+			end.omega += gen_noise(0.0001);
+			end.a += gen_noise(0.0001);
+			end.ax += gen_noise(0.0001);
+			end.ay += gen_noise(0.0001);
+			end.accel += gen_noise(0.0001);
+			end.steer += gen_noise(0.0001);
+			end.slip_angle += gen_noise(0.01);
 		}
 
 		return end;
@@ -538,17 +538,17 @@ public:
 	// Callback for map
 	void mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg)
 	{
-		// 지도 파라미터 가져오기
+		// Get map parameters
 		size_t height = msg->info.height;
 		size_t width = msg->info.width;
 		double resolution = msg->info.resolution;
 
-		// ROS 원점을 Pose2D로 변환
+		// Convert ROS origin to Pose2D
 		Pose2D origin;
 		origin.x = msg->info.origin.position.x;
 		origin.y = msg->info.origin.position.y;
 
-		// 쿼터니언을 Yaw 각도로 변환
+		// Convert quaternion to Yaw angle
 		tf2::Quaternion quat(msg->info.origin.orientation.x,
 							 msg->info.origin.orientation.y,
 							 msg->info.origin.orientation.z,
@@ -558,28 +558,28 @@ public:
 		mat.getRPY(roll, pitch, yaw);
 		origin.theta = yaw;
 
-		// 데이터 크기 검사
+		// Check data size
 		if (msg->data.size() != height * width)
 		{
 			RCLCPP_ERROR(this->get_logger(), "Data size mismatch: expected %zu but got %zu", height * width, msg->data.size());
 			return;
 		}
 
-		// 지도를 확률 값으로 변환
-		std::vector<double> map(msg->data.size(), 0.5); // 기본값으로 0.5로 초기화
+		// Convert map to probability values
+		std::vector<double> map(msg->data.size(), 0.5); // Initialize with default value of 0.5
 		for (size_t i = 0; i < msg->data.size(); i++)
 		{
 			if (msg->data[i] > 100 || msg->data[i] < 0)
 			{
-				map[i] = 0.5; // 알 수 없는 영역으로 설정
+				map[i] = 0.5; // Set as unknown area
 			}
 			else
 			{
-				map[i] = msg->data[i] / 100.0; // 0~100 사이 값을 확률로 변환
+				map[i] = msg->data[i] / 100.0; // Convert values from 0-100 to probabilities
 			}
 		}
 
-		// 스캐너에 지도 전달
+		// Pass the map to the scanner
 		scan_simulator_.set_map(map, height, width, resolution, origin, map_free_threshold_);
 
 		map_exists_ = true;
