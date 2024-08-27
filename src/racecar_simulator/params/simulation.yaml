@@ -7,6 +7,7 @@ racecar_simulator:
     scan_field_of_view: 4.71238898      # rad    270 degrees
     scan_std_dev: 0.01                  # m      standard deviation of the scan noise
     map_free_threshold: 0.2             # m
+    detect_car_mode: true               # detect other cars
     state_noise_mode: false              # add noise to the state
     scan_noise_mode: true               # add noise to the scan
     pgm_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/c_track.pgm"

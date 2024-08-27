@@ -53,6 +53,7 @@ private:
 	std::string drive_topic0_, state_topic0_, drive_topic1_, state_topic1_, scan_topic0_, scan_topic1_;
 	std::string pgm_file_path_, yaml_file_path_;
 	double simulator_frequency_, pub_frequency_;
+	bool detect_car_mode_ = false;
 	bool state_noise_mode_ = false;
 	bool scan_noise_mode_ = false;
 
@@ -63,6 +64,8 @@ private:
 	double map_free_threshold_;
 
 	bool map_exists_ = false;
+	nav_msgs::msg::OccupancyGrid original_map_;
+	nav_msgs::msg::OccupancyGrid current_map_;
 
 public:
 	RacecarSimulator()
@@ -75,6 +78,7 @@ public:
 		this->declare_parameter("scan_field_of_view", 2.0 * M_PI);
 		this->declare_parameter("scan_std_dev", 0.01);
 		this->declare_parameter("map_free_threshold", 0.2);
+		this->declare_parameter("detect_car_mode", false);
 		this->declare_parameter("state_noise_mode", false);
 		this->declare_parameter("scan_noise_mode", false);
 		this->declare_parameter<std::string>("pgm_file_path", "/home/a/racecar_simulator/src/racecar_simulator/maps/map7.pgm");
@@ -86,6 +90,7 @@ public:
 		this->get_parameter("scan_field_of_view", scan_fov_);
 		this->get_parameter("scan_std_dev", scan_std_dev_);
 		this->get_parameter("map_free_threshold", map_free_threshold_);
+		this->get_parameter("detect_car_mode", detect_car_mode_);
 		this->get_parameter("state_noise_mode", state_noise_mode_);
 		this->get_parameter("scan_noise_mode", scan_noise_mode_);
 		this->get_parameter("pgm_file_path", pgm_file_path_);
@@ -210,6 +215,8 @@ public:
 		map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("map", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local());
 
 		scan_simulator_ = ScanSimulator2D(scan_beams_, scan_fov_, scan_std_dev_);
+		original_map_ = read_map_files(pgm_file_path_, yaml_file_path_);
+		current_map_ = original_map_;
 	}
 
 	// Simulator loop for updating car states
@@ -229,7 +236,12 @@ public:
 		state1Publisher();
 		pub_scan(car_state0_, "laser_model0", scan0_pub_);
 		pub_scan(car_state1_, "laser_model1", scan1_pub_);
-		pub_map();
+
+		current_map_ = original_map_;
+		current_map_ = mark_vehicle_on_grid(original_map_, car_state0_);
+		current_map_ = mark_vehicle_on_grid(current_map_, car_state1_);
+
+		pub_map(current_map_);
 	}
 
 	// Publish transform between frames
@@ -646,13 +658,25 @@ public:
 	}
 
 	// Function to read the PGM file
-	bool read_pgm_file(const std::string &file_path, std::vector<int8_t> &map_data, int &width, int &height)
+	nav_msgs::msg::OccupancyGrid read_map_files(const std::string &pgm_file_path, const std::string &yaml_file_path)
 	{
-		std::ifstream file(file_path, std::ios::binary);
+		nav_msgs::msg::OccupancyGrid occupancy_grid;
+
+		// Parse YAML file
+		YAML::Node yaml_node = YAML::LoadFile(yaml_file_path);
+		double resolution = yaml_node["resolution"].as<double>();
+		std::vector<double> origin = yaml_node["origin"].as<std::vector<double>>();
+		double occupied_thresh = yaml_node["occupied_thresh"].as<double>();
+		double free_thresh = yaml_node["free_thresh"].as<double>();
+
+		// Read PGM file
+		std::vector<int8_t> pgm_data;
+		int map_width, map_height;
+		std::ifstream file(pgm_file_path, std::ios::binary);
 		if (!file.is_open())
 		{
-			std::cerr << "Failed to open PGM file: " << file_path << std::endl;
-			return false;
+			std::cerr << "Failed to open PGM file: " << pgm_file_path << std::endl;
+			return nav_msgs::msg::OccupancyGrid(); // Return an empty OccupancyGrid object
 		}
 
 		std::string line;
@@ -661,7 +685,7 @@ public:
 		if (line != "P5")
 		{
 			std::cerr << "Invalid PGM file format: " << line << std::endl;
-			return false;
+			return nav_msgs::msg::OccupancyGrid(); // Return an empty OccupancyGrid object
 		}
 
 		// Skip comments
@@ -672,83 +696,133 @@ public:
 		}
 
 		std::stringstream ss(line);
-		ss >> width >> height;
+		ss >> map_width >> map_height;
 
 		std::getline(file, line); // Read max grayscale value
 
-		map_data.resize(width * height);
+		pgm_data.resize(map_width * map_height);
 
-		file.read(reinterpret_cast<char *>(map_data.data()), map_data.size());
+		file.read(reinterpret_cast<char *>(pgm_data.data()), pgm_data.size());
 
 		file.close();
-		return true;
-	}
 
-	void pub_map()
-	{
-		// Parse YAML file
-		YAML::Node yaml_node = YAML::LoadFile(yaml_file_path_);
-		double resolution = yaml_node["resolution"].as<double>();
-		std::vector<double> origin = yaml_node["origin"].as<std::vector<double>>();
-		double occupied_thresh = yaml_node["occupied_thresh"].as<double>();
-		double free_thresh = yaml_node["free_thresh"].as<double>();
-
-		// Read PGM file
-		std::vector<int8_t> pgm_data;
-		int width, height;
-		if (!read_pgm_file(pgm_file_path_, pgm_data, width, height))
-		{
-			RCLCPP_ERROR(this->get_logger(), "Failed to load the map image!");
-			return;
-		}
-
-		// Create OccupancyGrid message
-		nav_msgs::msg::OccupancyGrid msg;
-		msg.header.frame_id = "map";
-		msg.info.resolution = resolution;
-		msg.info.width = width;
-		msg.info.height = height;
-		msg.info.origin.position.x = origin[0];
-		msg.info.origin.position.y = origin[1];
-		msg.info.origin.position.z = origin[2];
-		msg.info.origin.orientation.x = 0.0;
-		msg.info.origin.orientation.y = 0.0;
-		msg.info.origin.orientation.z = 0.0;
-		msg.info.origin.orientation.w = 1.0;
+		// Set OccupancyGrid message fields
+		occupancy_grid.info.resolution = resolution;
+		occupancy_grid.info.width = map_width;
+		occupancy_grid.info.height = map_height;
+		occupancy_grid.info.origin.position.x = origin[0];
+		occupancy_grid.info.origin.position.y = origin[1];
+		occupancy_grid.info.origin.position.z = origin[2];
+		occupancy_grid.info.origin.orientation.x = 0.0;
+		occupancy_grid.info.origin.orientation.y = 0.0;
+		occupancy_grid.info.origin.orientation.z = 0.0;
+		occupancy_grid.info.origin.orientation.w = 1.0;
 
 		// Convert the PGM data to occupancy values
-		msg.data.resize(msg.info.width * msg.info.height);
-		for (int y = 0; y < height; ++y)
+		occupancy_grid.data.resize(occupancy_grid.info.width * occupancy_grid.info.height);
+		for (int y = 0; y < map_height; ++y)
 		{
-			for (int x = 0; x < width; ++x)
+			for (int x = 0; x < map_width; ++x)
 			{
-				// 반전된 Y값 사용
-				int reversed_y = height - 1 - y;
-				uint8_t pixel = pgm_data[x + reversed_y * width];
-				int index = x + y * width;
+				int reversed_y = map_height - 1 - y;
+				uint8_t pixel = pgm_data[x + reversed_y * map_width];
+				int index = x + y * map_width;
 
 				if (pixel == 205)
 				{
-					msg.data[index] = -1; // Unknown
+					occupancy_grid.data[index] = -1; // Unknown
 				}
 				else if (pixel > occupied_thresh * 255)
 				{
-					msg.data[index] = 0; // Free
+					occupancy_grid.data[index] = 0; // Free
 				}
 				else if (pixel < free_thresh * 255)
 				{
-					msg.data[index] = 100; // Occupied
+					occupancy_grid.data[index] = 100; // Occupied
 				}
 				else
 				{
-					msg.data[index] = -1; // Unknown
+					occupancy_grid.data[index] = -1; // Unknown
 				}
 			}
 		}
 
-		// Publish the map message
+		return occupancy_grid;
+	}
+
+	// Function to publish the OccupancyGrid map
+	void pub_map(const nav_msgs::msg::OccupancyGrid &map)
+	{
+		nav_msgs::msg::OccupancyGrid msg = map;
+
+		// Update the header timestamp before publishing
 		msg.header.stamp = this->get_clock()->now();
+		msg.header.frame_id = "map";
+
+		// Publish the map
 		map_pub_->publish(msg);
+	}
+
+	nav_msgs::msg::OccupancyGrid mark_vehicle_on_grid(
+		const nav_msgs::msg::OccupancyGrid &grid,
+		control_msgs::msg::CarState &state)
+	{
+		// 복사본을 생성 (원본 데이터를 손상시키지 않기 위해)
+		nav_msgs::msg::OccupancyGrid modified_grid = grid;
+
+		// Occupancy Grid의 메타데이터
+		float resolution = grid.info.resolution;
+		auto origin = grid.info.origin;
+		int width = grid.info.width;
+		int height = grid.info.height;
+
+		double block_size = 0.2; // meters
+
+		// 월드 좌표계를 그리드 좌표계로 변환
+		int grid_x = (state.px - origin.position.x-0.2*cos(state.yaw)) / resolution;
+		int grid_y = (state.py - origin.position.y-0.2*sin(state.yaw)) / resolution;
+		int grid_block_size = block_size / resolution;
+
+		// 회전 행렬을 계산
+		float cos_yaw = cos(state.yaw);
+		float sin_yaw = sin(state.yaw);
+
+		// 가변 크기 정사각형 블록의 기본 좌표들 (사각형의 중심을 기준으로)
+		std::vector<std::pair<int, int>> block_cells;
+		int half_block_size = grid_block_size / 2; // 정사각형의 반쪽 크기
+
+		for (int i = -half_block_size; i < half_block_size; ++i)
+		{
+			for (int j = -half_block_size; j < half_block_size; ++j)
+			{
+				block_cells.emplace_back(i, j);
+			}
+		}
+
+		// 정사각형 블록을 회전시켜 그리드에 추가
+		for (const auto &cell : block_cells)
+		{
+			int local_x = cell.first;
+			int local_y = cell.second;
+
+			// 회전 변환 적용
+			int rotated_x = round(cos_yaw * local_x - sin_yaw * local_y);
+			int rotated_y = round(sin_yaw * local_x + cos_yaw * local_y);
+
+			// Occupancy Grid 좌표에 추가
+			int cell_x = grid_x + rotated_x;
+			int cell_y = grid_y + rotated_y;
+
+			// 그리드 내에서 유효한 좌표인지 확인
+			if (cell_x >= 0 && cell_x < width && cell_y >= 0 && cell_y < height)
+			{
+				// 점유율을 100(점유된 공간)으로 설정
+				modified_grid.data[cell_y * width + cell_x] = 100;
+			}
+		}
+
+		// 수정된 Occupancy Grid 반환
+		return modified_grid;
 	}
 };
 
