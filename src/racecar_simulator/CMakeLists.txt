@@ -23,15 +23,13 @@ include_directories(include)
 
 # Add executables and libraries
 add_executable(simulator src/simulator.cpp)
-add_executable(map_publisher src/map_publisher.cpp)
 
 add_library(scan_simulator_2d src/scan_simulator_2d.cpp)
 add_library(distance_transform src/distance_transform.cpp)
 
 # Link libraries
-target_link_libraries(simulator scan_simulator_2d)
+target_link_libraries(simulator scan_simulator_2d yaml-cpp)
 target_link_libraries(scan_simulator_2d distance_transform)
-target_link_libraries(map_publisher yaml-cpp)
 
 # Link executables to required libraries
 ament_target_dependencies(simulator
@@ -43,19 +41,13 @@ ament_target_dependencies(simulator
   control_msgs
   nav_msgs
   sensor_msgs
-)
-
-ament_target_dependencies(map_publisher
-  rclcpp
-  nav_msgs
-  geometry_msgs
   yaml-cpp
 )
+
 
 # Install executables
 install(TARGETS
   simulator
-  map_publisher
   DESTINATION lib/${PROJECT_NAME}
 )
 
