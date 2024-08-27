@@ -13,6 +13,8 @@
 #include "nav_msgs/msg/occupancy_grid.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
 #include "racecar_simulator/scan_simulator_2d.hpp"
+#include <yaml-cpp/yaml.h>
+#include <fstream>
 
 using namespace std::chrono_literals; // Use chrono literals for timing
 using namespace racecar_simulator;
@@ -32,6 +34,7 @@ private:
 	rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan1_pub_;
 	rclcpp::Publisher<control_msgs::msg::CarState>::SharedPtr state0_pub_;
 	rclcpp::Publisher<control_msgs::msg::CarState>::SharedPtr state1_pub_;
+	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub_;
 
 	control_msgs::msg::CarState car_state0_, car_state1_;
 
@@ -48,6 +51,7 @@ private:
 	CarParams car0_params_, car1_params_;
 
 	std::string drive_topic0_, state_topic0_, drive_topic1_, state_topic1_, scan_topic0_, scan_topic1_;
+	std::string pgm_file_path_, yaml_file_path_;
 	double simulator_frequency_, pub_frequency_;
 	bool state_noise_mode_ = false;
 	bool scan_noise_mode_ = false;
@@ -73,6 +77,8 @@ public:
 		this->declare_parameter("map_free_threshold", 0.2);
 		this->declare_parameter("state_noise_mode", false);
 		this->declare_parameter("scan_noise_mode", false);
+		this->declare_parameter<std::string>("pgm_file_path", "/home/a/racecar_simulator/src/racecar_simulator/maps/map7.pgm");
+		this->declare_parameter<std::string>("yaml_file_path", "/home/a/racecar_simulator/src/racecar_simulator/maps/map7.yaml");
 
 		this->get_parameter("simulator_frequency", simulator_frequency_);
 		this->get_parameter("pub_frequency", pub_frequency_);
@@ -82,6 +88,8 @@ public:
 		this->get_parameter("map_free_threshold", map_free_threshold_);
 		this->get_parameter("state_noise_mode", state_noise_mode_);
 		this->get_parameter("scan_noise_mode", scan_noise_mode_);
+		this->get_parameter("pgm_file_path", pgm_file_path_);
+		this->get_parameter("yaml_file_path", yaml_file_path_);
 
 		// Car0 parameters
 		this->declare_parameter("drive_topic0", "ackermann_cmd0");
@@ -199,6 +207,7 @@ public:
 		scan1_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic1_, 100);
 		state0_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic0_, 10);
 		state1_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic1_, 10);
+		map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("map", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local());
 
 		scan_simulator_ = ScanSimulator2D(scan_beams_, scan_fov_, scan_std_dev_);
 	}
@@ -220,6 +229,7 @@ public:
 		state1Publisher();
 		pub_scan(car_state0_, "laser_model0", scan0_pub_);
 		pub_scan(car_state1_, "laser_model1", scan1_pub_);
+		pub_map();
 	}
 
 	// Publish transform between frames
@@ -505,7 +515,7 @@ public:
 			end.slip_angle += 2 * M_PI;
 		}
 
-		if(state_noise_mode_)
+		if (state_noise_mode_)
 		{
 			end.px += gen_noise(0.1);
 			end.py += gen_noise(0.1);
@@ -521,8 +531,6 @@ public:
 			end.steer += gen_noise(0.001);
 			end.slip_angle += gen_noise(0.001);
 		}
-
-
 
 		return end;
 	}
@@ -572,8 +580,7 @@ public:
 		}
 
 		// 스캐너에 지도 전달
-		double map_free_threshold = 0.2; // 자유 공간 임계값 설정
-		scan_simulator_.set_map(map, height, width, resolution, origin, map_free_threshold);
+		scan_simulator_.set_map(map, height, width, resolution, origin, map_free_threshold_);
 
 		map_exists_ = true;
 	}
@@ -594,8 +601,8 @@ public:
 
 		if (scan_noise_mode_)
 		{
-			scan_pose.x = state.px + scan_distance_to_base_link * cos(state.yaw) + gen_noise(0.01);
-			scan_pose.y = state.py + scan_distance_to_base_link * sin(state.yaw) + gen_noise(0.01);
+			scan_pose.x = state.px + scan_distance_to_base_link * cos(state.yaw) + gen_noise(0.001);
+			scan_pose.y = state.py + scan_distance_to_base_link * sin(state.yaw) + gen_noise(0.001);
 			scan_pose.theta = state.yaw + gen_noise(0.01);
 		}
 		else
@@ -636,6 +643,112 @@ public:
 		std::normal_distribution<double> dist(0.0, std_dev);
 		value += dist(gen);
 		return value;
+	}
+
+	// Function to read the PGM file
+	bool read_pgm_file(const std::string &file_path, std::vector<int8_t> &map_data, int &width, int &height)
+	{
+		std::ifstream file(file_path, std::ios::binary);
+		if (!file.is_open())
+		{
+			std::cerr << "Failed to open PGM file: " << file_path << std::endl;
+			return false;
+		}
+
+		std::string line;
+		std::getline(file, line); // Read PGM format (P5)
+
+		if (line != "P5")
+		{
+			std::cerr << "Invalid PGM file format: " << line << std::endl;
+			return false;
+		}
+
+		// Skip comments
+		while (std::getline(file, line))
+		{
+			if (line[0] != '#')
+				break;
+		}
+
+		std::stringstream ss(line);
+		ss >> width >> height;
+
+		std::getline(file, line); // Read max grayscale value
+
+		map_data.resize(width * height);
+
+		file.read(reinterpret_cast<char *>(map_data.data()), map_data.size());
+
+		file.close();
+		return true;
+	}
+
+	void pub_map()
+	{
+		// Parse YAML file
+		YAML::Node yaml_node = YAML::LoadFile(yaml_file_path_);
+		double resolution = yaml_node["resolution"].as<double>();
+		std::vector<double> origin = yaml_node["origin"].as<std::vector<double>>();
+		double occupied_thresh = yaml_node["occupied_thresh"].as<double>();
+		double free_thresh = yaml_node["free_thresh"].as<double>();
+
+		// Read PGM file
+		std::vector<int8_t> pgm_data;
+		int width, height;
+		if (!read_pgm_file(pgm_file_path_, pgm_data, width, height))
+		{
+			RCLCPP_ERROR(this->get_logger(), "Failed to load the map image!");
+			return;
+		}
+
+		// Create OccupancyGrid message
+		nav_msgs::msg::OccupancyGrid msg;
+		msg.header.frame_id = "map";
+		msg.info.resolution = resolution;
+		msg.info.width = width;
+		msg.info.height = height;
+		msg.info.origin.position.x = origin[0];
+		msg.info.origin.position.y = origin[1];
+		msg.info.origin.position.z = origin[2];
+		msg.info.origin.orientation.x = 0.0;
+		msg.info.origin.orientation.y = 0.0;
+		msg.info.origin.orientation.z = 0.0;
+		msg.info.origin.orientation.w = 1.0;
+
+		// Convert the PGM data to occupancy values
+		msg.data.resize(msg.info.width * msg.info.height);
+		for (int y = 0; y < height; ++y)
+		{
+			for (int x = 0; x < width; ++x)
+			{
+				// 반전된 Y값 사용
+				int reversed_y = height - 1 - y;
+				uint8_t pixel = pgm_data[x + reversed_y * width];
+				int index = x + y * width;
+
+				if (pixel == 205)
+				{
+					msg.data[index] = -1; // Unknown
+				}
+				else if (pixel > occupied_thresh * 255)
+				{
+					msg.data[index] = 0; // Free
+				}
+				else if (pixel < free_thresh * 255)
+				{
+					msg.data[index] = 100; // Occupied
+				}
+				else
+				{
+					msg.data[index] = -1; // Unknown
+				}
+			}
+		}
+
+		// Publish the map message
+		msg.header.stamp = this->get_clock()->now();
+		map_pub_->publish(msg);
 	}
 };
 
