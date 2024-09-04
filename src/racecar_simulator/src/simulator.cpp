@@ -233,8 +233,10 @@ public:
 	{
 		setInput(car_state0_, desired_accel0_, desired_steer_ang0_, car0_params_);
 		setInput(car_state1_, desired_accel1_, desired_steer_ang1_, car1_params_);
-		car_state0_ = updateStatePacejka(car_state0_, car0_params_);
-		car_state1_ = updateStatePacejka(car_state1_, car1_params_);
+		// car_state0_ = updateStatePacejka(car_state0_, car0_params_);
+		// car_state1_ = updateStatePacejka(car_state1_, car1_params_);
+		car_state0_ = updateStateSingleTrack(car_state0_, car0_params_);
+		car_state1_ = updateStateSingleTrack(car_state1_, car1_params_);
 		setTF();
 	}
 
@@ -474,16 +476,16 @@ public:
 			return update_k(start, start.accel, start.steer_vel, car_params, 1.0 / simulator_frequency_);
 		}
 		double g=9.81;
-		double h_cg=0.5;
+		double h_cg=0.074;
 		double friction_coeff=0.8;
-		double cs_f =-0.75;
-		double cs_r =0.75;
+		double cs_f =4.718;
+		double cs_r =5.74562;
 		double dt=1.0/simulator_frequency_;
 
 		double x_dot = start.v * cos(start.yaw+start.slip_angle);
 		double y_dot = start.v * sin(start.yaw+start.slip_angle);
 		double v_dot = start.accel;
-		double steer_angle_dot = start.steer_vel;
+		// double steer_angle_dot = start.steer_vel;
 		double theta_dot = start.omega;
 
 		double rear_val=g*car_params.l_r-start.accel*h_cg;
@@ -498,6 +500,38 @@ public:
 		 (friction_coeff*car_params.mass/(car_params.I_z*(car_params.l_f+car_params.l_r)))*
 		 (car_params.l_f*cs_f*start.steer*rear_val+start.slip_angle*(car_params.l_r*cs_r*front_val-car_params.l_f*cs_f*rear_val))-
 		vel_ratio*(std::pow(car_params.l_f,2)*cs_f*rear_val+std::pow(car_params.l_r,2)*cs_r*front_val);
+
+		double slip_angle_dot=
+		 (first_term)*(cs_f*start.steer*rear_val-start.slip_angle*(cs_r*front_val+cs_f*rear_val))+
+		 vel_ratio*(cs_r*(cs_r*car_params.l_r*front_val-cs_f*car_params.l_f*rear_val))-start.omega;
+
+
+		control_msgs::msg::CarState end;
+		end.px = start.px + x_dot * dt;
+		end.py = start.py + y_dot * dt;
+		end.yaw = start.yaw + theta_dot * dt;
+		end.slip_angle = start.slip_angle + slip_angle_dot * dt;
+		
+		end.v = start.v + v_dot * dt;
+		end.vx = start.v * cos(start.slip_angle);
+		end.vy = start.v * sin(start.slip_angle);
+		end.omega = start.omega + theta_double_dot * dt;
+		
+		end.a = start.accel;
+		end.ax = start.a * cos(start.slip_angle) - start.v * start.omega * sin(start.slip_angle);
+		end.ay = start.a * sin(start.slip_angle) + start.v * start.omega * cos(start.slip_angle);
+		
+		end.accel = start.accel;
+		end.steer = start.steer;
+		
+		
+
+		if(end.yaw> M_PI)
+			end.yaw-=2*M_PI;
+		else if(end.yaw<-M_PI)
+			end.yaw+=2*M_PI;
+
+		return end;
 	}
 
 
