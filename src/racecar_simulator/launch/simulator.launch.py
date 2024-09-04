@@ -30,7 +30,8 @@ def generate_launch_description():
             {
                 "robot_description": ParameterValue(
                     Command(["xacro ", str(car0_xacro_file), " prefix:=0"]), value_type=str
-                )
+                ),
+                # "use_sim_time": True
             }
         ],
     )
@@ -45,7 +46,8 @@ def generate_launch_description():
             {
                 "robot_description": ParameterValue(
                     Command(["xacro ", str(car1_xacro_file), " prefix:=1"]), value_type=str
-                )
+                ),
+                # "use_sim_time": True
             }
         ],
     )
@@ -55,7 +57,9 @@ def generate_launch_description():
         executable="simulator",
         name="racecar_simulator",
         output="screen",
-        parameters=[simulation_config_file],
+        parameters=[simulation_config_file,
+                    # {"use_sim_time": True}
+                    ],
     )
 
     rviz_node = Node(
@@ -64,6 +68,7 @@ def generate_launch_description():
         name="rviz2",
         arguments=["-d", rviz_config_file],
         output="screen",
+        # parameters=[{"use_sim_time": True}],
     )
 
     ld.add_action(rviz_node)
