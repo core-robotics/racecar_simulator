@@ -469,21 +469,21 @@ public:
 
 		return end;
 	}
-	control_msgs::msg::CarState updateStateSingleTrack(control_msgs::msg::CarState &start,CarParams p)
+	control_msgs::msg::CarState updateStateSingleTrack(control_msgs::msg::CarState &start, CarParams p)
 	{
-		if (abs(start.v) < 1.0e-8)
+		if (abs(start.v) <0.1)
 		{
 			return update_k(start, start.accel, start.steer_vel, p, 1.0 / simulator_frequency_);
 		}
-		double g=9.81;
-		double h_cg=0.074;
-		double friction_coeff=0.8;
-		double cs_f =4.718;
-		double cs_r =5.74562;
-		double dt=1.0/simulator_frequency_;
+		double g = 9.81;
+		double h_cg = 0.074;
+		double friction_coeff = 0.8;
+		double cs_f = 4.718;
+		double cs_r = 5.74562;
+		double dt = 1.0 / simulator_frequency_;
 
-		double x_dot = start.v * cos(start.yaw+start.slip_angle);
-		double y_dot = start.v * sin(start.yaw+start.slip_angle);
+		double x_dot = start.v * cos(start.yaw + start.slip_angle);
+		double y_dot = start.v * sin(start.yaw + start.slip_angle);
 		double v_dot = start.accel;
 		// double steer_angle_dot = start.steer_vel;
 		// double theta_dot = start.omega;123
@@ -491,19 +491,21 @@ public:
 		double rear_val=g*p.l_r-start.accel*h_cg;
 		double front_val=g*p.l_f+start.accel*h_cg;
 
-		double vel_ratio, first_term;
+		// double vel_ratio, first_term;
 
-		vel_ratio=start.omega/start.v;
-		first_term=friction_coeff/(start.v*(p.l_f+p.l_r));
+		// vel_ratio = start.omega / start.v;
+		// first_term = friction_coeff / (start.v * (p.l_f + p.l_r));
 
 		double omega_dot=
-		 (friction_coeff*p.mass/(p.I_z*(p.l_f+p.l_r)))*
-		 (p.l_f*cs_f*start.steer*rear_val+start.slip_angle*(p.l_r*cs_r*front_val-p.l_f*cs_f*rear_val))-
-		vel_ratio*(std::pow(p.l_f,2)*cs_f*rear_val+std::pow(p.l_r,2)*cs_r*front_val);
+		  (friction_coeff * p.mass / (p.I_z * (p.l_f+p.l_r))) *
+                      (p.l_f * cs_f * start.steer * (rear_val) + start.slip_angle * (p.l_r * cs_r * (front_val)-p.l_f * cs_f * (rear_val)) -
+                       (start.omega / start.v) * (pow(p.l_f, 2) * cs_f * (rear_val) + pow(p.l_r, 2) * cs_r * (front_val))); 
 
 		double slip_angle_dot=
-		 (first_term)*(cs_f*start.steer*rear_val-start.slip_angle*(cs_r*front_val+cs_f*rear_val))+
-		 vel_ratio*((cs_r*p.l_r*front_val-cs_f*p.l_f*rear_val))-start.omega;
+		(friction_coeff / (start.v * (p.l_r + p.l_f))) *
+                          (cs_f * start.steer * rear_val - start.slip_angle * (cs_r * front_val + cs_f * rear_val) +
+                           (start.omega / start.v) * (cs_r * p.l_r * front_val - cs_f * p.l_f * rear_val)) -
+                      start.omega; 
 
 
 		control_msgs::msg::CarState end;
@@ -511,20 +513,18 @@ public:
 		end.py = start.py + y_dot * dt;
 		end.yaw = start.yaw + start.omega * dt;
 		end.slip_angle = start.slip_angle + slip_angle_dot * dt;
-		
+
 		end.v = start.v + v_dot * dt;
 		end.vx = start.v * cos(start.slip_angle);
 		end.vy = start.v * sin(start.slip_angle);
 		end.omega = start.omega + omega_dot * dt;
-		
+
 		end.a = start.accel;
 		end.ax = start.a * cos(start.slip_angle) - start.v * start.omega * sin(start.slip_angle);
 		end.ay = start.a * sin(start.slip_angle) + start.v * start.omega * cos(start.slip_angle);
-		
+
 		end.accel = start.accel;
 		end.steer = start.steer;
-		
-		
 
 		if (end.v > p.speed_max)
 		{
@@ -555,7 +555,6 @@ public:
 
 		return end;
 	}
-
 
 	// Update car state
 	control_msgs::msg::CarState updateStatePacejka(control_msgs::msg::CarState &start, CarParams car_params)
@@ -927,8 +926,8 @@ public:
 	}
 
 	void pub_colision(
-					  std::vector<float> scan_data,
-					  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr collision_pub)
+		std::vector<float> scan_data,
+		rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr collision_pub)
 	{
 		std_msgs::msg::Bool collision_msg;
 		collision_msg.data = false;
