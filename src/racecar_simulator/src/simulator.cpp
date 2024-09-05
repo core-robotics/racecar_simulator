@@ -469,11 +469,11 @@ public:
 
 		return end;
 	}
-	control_msgs::msg::CarState updateStateSingleTrack(control_msgs::msg::CarState &start,CarParams car_params)
+	control_msgs::msg::CarState updateStateSingleTrack(control_msgs::msg::CarState &start,CarParams p)
 	{
 		if (abs(start.v) < 1.0e-8)
 		{
-			return update_k(start, start.accel, start.steer_vel, car_params, 1.0 / simulator_frequency_);
+			return update_k(start, start.accel, start.steer_vel, p, 1.0 / simulator_frequency_);
 		}
 		double g=9.81;
 		double h_cg=0.074;
@@ -486,36 +486,36 @@ public:
 		double y_dot = start.v * sin(start.yaw+start.slip_angle);
 		double v_dot = start.accel;
 		// double steer_angle_dot = start.steer_vel;
-		double theta_dot = start.omega;
+		// double theta_dot = start.omega;123
 
-		double rear_val=g*car_params.l_r-start.accel*h_cg;
-		double front_val=g*car_params.l_f+start.accel*h_cg;
+		double rear_val=g*p.l_r-start.accel*h_cg;
+		double front_val=g*p.l_f+start.accel*h_cg;
 
 		double vel_ratio, first_term;
 
 		vel_ratio=start.omega/start.v;
-		first_term=friction_coeff/(start.v*(car_params.l_f+car_params.l_r));
+		first_term=friction_coeff/(start.v*(p.l_f+p.l_r));
 
-		double theta_double_dot=
-		 (friction_coeff*car_params.mass/(car_params.I_z*(car_params.l_f+car_params.l_r)))*
-		 (car_params.l_f*cs_f*start.steer*rear_val+start.slip_angle*(car_params.l_r*cs_r*front_val-car_params.l_f*cs_f*rear_val))-
-		vel_ratio*(std::pow(car_params.l_f,2)*cs_f*rear_val+std::pow(car_params.l_r,2)*cs_r*front_val);
+		double omega_dot=
+		 (friction_coeff*p.mass/(p.I_z*(p.l_f+p.l_r)))*
+		 (p.l_f*cs_f*start.steer*rear_val+start.slip_angle*(p.l_r*cs_r*front_val-p.l_f*cs_f*rear_val))-
+		vel_ratio*(std::pow(p.l_f,2)*cs_f*rear_val+std::pow(p.l_r,2)*cs_r*front_val);
 
 		double slip_angle_dot=
 		 (first_term)*(cs_f*start.steer*rear_val-start.slip_angle*(cs_r*front_val+cs_f*rear_val))+
-		 vel_ratio*(cs_r*(cs_r*car_params.l_r*front_val-cs_f*car_params.l_f*rear_val))-start.omega;
+		 vel_ratio*((cs_r*p.l_r*front_val-cs_f*p.l_f*rear_val))-start.omega;
 
 
 		control_msgs::msg::CarState end;
 		end.px = start.px + x_dot * dt;
 		end.py = start.py + y_dot * dt;
-		end.yaw = start.yaw + theta_dot * dt;
+		end.yaw = start.yaw + start.omega * dt;
 		end.slip_angle = start.slip_angle + slip_angle_dot * dt;
 		
 		end.v = start.v + v_dot * dt;
 		end.vx = start.v * cos(start.slip_angle);
 		end.vy = start.v * sin(start.slip_angle);
-		end.omega = start.omega + theta_double_dot * dt;
+		end.omega = start.omega + omega_dot * dt;
 		
 		end.a = start.accel;
 		end.ax = start.a * cos(start.slip_angle) - start.v * start.omega * sin(start.slip_angle);
@@ -526,10 +526,32 @@ public:
 		
 		
 
-		if(end.yaw> M_PI)
-			end.yaw-=2*M_PI;
-		else if(end.yaw<-M_PI)
-			end.yaw+=2*M_PI;
+		if (end.v > p.speed_max)
+		{
+			end.v = p.speed_max;
+		}
+		else if (end.v < -p.speed_max)
+		{
+			end.v = -p.speed_max;
+		}
+
+		if (end.yaw > M_PI)
+		{
+			end.yaw -= 2 * M_PI;
+		}
+		else if (end.yaw < -M_PI)
+		{
+			end.yaw += 2 * M_PI;
+		}
+
+		while (end.slip_angle > M_PI)
+		{
+			end.slip_angle -= 2 * M_PI;
+		}
+		while (end.slip_angle < -M_PI)
+		{
+			end.slip_angle += 2 * M_PI;
+		}
 
 		return end;
 	}

@@ -1,0 +1,12 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "racecar_simulator",
+            "type": "ros",
+            "request": "launch",
+            "preLaunchTask": "build all packages",
+            "target":"${workspaceFolder}/install/racecar_simulator/share/racecar_simulator/launch/simulator.launch.py"
+        }
+    ]
+}
