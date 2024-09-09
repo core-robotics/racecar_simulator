@@ -20,6 +20,12 @@
 using namespace std::chrono_literals; // Use chrono literals for timing
 using namespace racecar_simulator;
 
+enum class ModelType
+{
+	SINGLE_TRACK,
+	PACEJKA
+};
+
 class RacecarSimulator : public rclcpp::Node
 {
 private:
@@ -65,7 +71,9 @@ private:
 	double scan_fov_, scan_std_dev_;
 	int scan_beams_;
 	double map_free_threshold_;
-	std::vector<float> scan_data0_, scan_data1_;
+	std::vector<float> scan_data_float0_, scan_data_float1_;
+	sensor_msgs::msg::LaserScan scan_msg_data0_, scan_msg_data1_;
+
 
 	bool map_exists_ = false;
 	nav_msgs::msg::OccupancyGrid original_map_;
@@ -73,6 +81,12 @@ private:
 
 	bool car0_collision_ = false;
 	bool car1_collision_ = false;
+
+	std::vector<std::pair<float, float>> scan_coordinates;
+	float x_min = -0.3105;
+    float x_max = 0.0705;
+    float y_min = -0.1397;
+    float y_max = 0.1397;
 
 public:
 	RacecarSimulator()
@@ -90,6 +104,7 @@ public:
 		this->declare_parameter("scan_noise_mode", false);
 		this->declare_parameter<std::string>("pgm_file_path", "/home/a/racecar_simulator/src/racecar_simulator/maps/map7.pgm");
 		this->declare_parameter<std::string>("yaml_file_path", "/home/a/racecar_simulator/src/racecar_simulator/maps/map7.yaml");
+
 
 		this->get_parameter("simulator_frequency", simulator_frequency_);
 		this->get_parameter("pub_frequency", pub_frequency_);
@@ -251,12 +266,12 @@ public:
 		}
 		// current_map_ = mark_vehicle_on_grid(original_map_, car_state0_);
 		// current_map_ = mark_vehicle_on_grid(current_map_, car_state1_);
-		pub_scan(car_state0_, "laser_model0", scan_data0_, scan0_pub_);
-		pub_scan(car_state1_, "laser_model1", scan_data1_, scan1_pub_);
+		pub_scan(car_state0_, "laser_model0", scan_data_float0_, scan0_pub_,scan_msg_data0_);
+		pub_scan(car_state1_, "laser_model1", scan_data_float1_, scan1_pub_,scan_msg_data1_);
 		state0Publisher();
 		state1Publisher();
-		pub_colision(scan_data0_, collision0_pub_);
-		pub_colision(scan_data1_, collision1_pub_);
+		pub_colision(scan_msg_data0_, collision0_pub_);
+		pub_colision(scan_msg_data1_, collision1_pub_);
 		pub_map(current_map_);
 	}
 
@@ -701,7 +716,8 @@ public:
 	void pub_scan(const control_msgs::msg::CarState &state,
 				  const std::string &scan_frame,
 				  std::vector<float> &scan_data_float,
-				  rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan_pub)
+				  rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan_pub,
+				  sensor_msgs::msg::LaserScan &scan_msg_data)
 	{
 		if (!map_exists_)
 		{
@@ -746,6 +762,8 @@ public:
 		scan_msg.intensities = std::vector<float>(scan_data.size(), 0.0);
 		scan_msg.time_increment = 0.0;
 		scan_msg.scan_time = 1.0 / pub_frequency_;
+
+		scan_msg_data=scan_msg;
 		scan_pub->publish(scan_msg);
 	}
 
@@ -930,22 +948,31 @@ public:
 		return modified_grid;
 	}
 
+	 bool check_colision(const sensor_msgs::msg::LaserScan& scan_data)
+    {
+        scan_coordinates.clear();
+        for (size_t i = 0; i < scan_data.ranges.size(); i++)
+        {
+            float angle = scan_data.angle_min + i * scan_data.angle_increment;
+            float x = scan_data.ranges[i] * cos(angle);
+            float y = scan_data.ranges[i] * sin(angle);
+            
+            
+            if (x > x_min && x < x_max && y > y_min && y < y_max)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
 	void pub_colision(
-		std::vector<float> scan_data,
+		const sensor_msgs::msg::LaserScan& scan_data,
 		rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr collision_pub)
 	{
 		std_msgs::msg::Bool collision_msg;
-		collision_msg.data = false;
-
-		for (size_t i = 0; i < scan_data.size(); i++)
-		{
-			if (scan_data[i] < 0.12)
-			{
-				collision_msg.data = true;
-				break;
-			}
-		}
-
+		collision_msg.data = check_colision(scan_data);
 		collision_pub->publish(collision_msg);
 	}
 };
