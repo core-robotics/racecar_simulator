@@ -244,8 +244,13 @@ public:
 	void pubLoop()
 	{
 		current_map_ = original_map_;
-		current_map_ = mark_vehicle_on_grid(original_map_, car_state0_);
-		current_map_ = mark_vehicle_on_grid(current_map_, car_state1_);
+		if(detect_car_mode_)
+		{
+			current_map_ = mark_vehicle_on_grid(current_map_, car_state0_);
+			current_map_ = mark_vehicle_on_grid(current_map_, car_state1_);
+		}
+		// current_map_ = mark_vehicle_on_grid(original_map_, car_state0_);
+		// current_map_ = mark_vehicle_on_grid(current_map_, car_state1_);
 		pub_scan(car_state0_, "laser_model0", scan_data0_, scan0_pub_);
 		pub_scan(car_state1_, "laser_model1", scan_data1_, scan1_pub_);
 		state0Publisher();
@@ -934,7 +939,7 @@ public:
 
 		for (size_t i = 0; i < scan_data.size(); i++)
 		{
-			if (scan_data[i] < 0.2)
+			if (scan_data[i] < 0.12)
 			{
 				collision_msg.data = true;
 				break;
