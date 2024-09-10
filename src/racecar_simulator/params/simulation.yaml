@@ -10,10 +10,12 @@ racecar_simulator:
     detect_car_mode: false               # detect other cars
     state_noise_mode: false              # add noise to the state
     scan_noise_mode: true               # add noise to the scan
+    
     pgm_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/c_track.pgm"
     yaml_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/c_track.yaml"
 
     # car1
+    vehicle_model0: 0                   # 0: single track model, 1: pacejka tire model
     drive_topic0: "ackermann_cmd0"      # car1 control topic
     state_topic0: "state0"              # car1 state topic
     mass0: 3.5                          # kg
@@ -34,6 +36,7 @@ racecar_simulator:
     jerk_max0: 100.0                    # m/s^3   max jerk
 
     # car2
+    vehicle_model1: 1                   # 0: single track model, 1: pacejka tire model
     drive_topic1: "ackermann_cmd1"      # car2 control topic
     state_topic1: "state1"              # car2 state topic
     mass1: 3.5                          # kg

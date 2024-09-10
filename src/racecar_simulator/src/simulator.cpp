@@ -20,11 +20,7 @@
 using namespace std::chrono_literals; // Use chrono literals for timing
 using namespace racecar_simulator;
 
-enum class ModelType
-{
-	SINGLE_TRACK,
-	PACEJKA
-};
+
 
 class RacecarSimulator : public rclcpp::Node
 {
@@ -59,6 +55,7 @@ private:
 	};
 	CarParams car0_params_, car1_params_;
 
+	int vehicle_model0_, vehicle_model1_;
 	std::string drive_topic0_, state_topic0_, drive_topic1_, state_topic1_, scan_topic0_, scan_topic1_;
 	std::string pgm_file_path_, yaml_file_path_;
 	double simulator_frequency_, pub_frequency_;
@@ -119,6 +116,7 @@ public:
 		this->get_parameter("yaml_file_path", yaml_file_path_);
 
 		// Car0 parameters
+		this->declare_parameter("vehicle_model0",1);
 		this->declare_parameter("drive_topic0", "ackermann_cmd0");
 		this->declare_parameter("state_topic0", "state0");
 		this->declare_parameter("scan_topic0", "scan0");
@@ -139,6 +137,7 @@ public:
 		this->declare_parameter("decel_max0", 40.0);
 		this->declare_parameter("jerk_max0", 100.0);
 
+		this->get_parameter("vehicle_model0", vehicle_model0_);
 		this->get_parameter("drive_topic0", drive_topic0_);
 		this->get_parameter("state_topic0", state_topic0_);
 		this->get_parameter("scan_topic0", scan_topic0_);
@@ -160,6 +159,7 @@ public:
 		this->get_parameter("jerk_max0", car0_params_.jerk_max);
 
 		// Car1 parameters
+		this->declare_parameter("vehicle_model1",1);
 		this->declare_parameter("drive_topic1", "ackermann_cmd1");
 		this->declare_parameter("state_topic1", "state1");
 		this->declare_parameter("scan_topic1", "scan1");
@@ -180,6 +180,7 @@ public:
 		this->declare_parameter("decel_max1", 4.0);
 		this->declare_parameter("jerk_max1", 1.0);
 
+		this->get_parameter("vehicle_model1", vehicle_model1_);
 		this->get_parameter("drive_topic1", drive_topic1_);
 		this->get_parameter("state_topic1", state_topic1_);
 		this->get_parameter("scan_topic1", scan_topic1_);
@@ -241,6 +242,20 @@ public:
 		scan_simulator_ = ScanSimulator2D(scan_beams_, scan_fov_, scan_std_dev_);
 		original_map_ = read_map_files(pgm_file_path_, yaml_file_path_);
 		current_map_ = original_map_;
+
+		// std::cout<<"\n\n\nRacecar simulator initialized\n";
+		// std::cout<<"Simulator frequency: "<<simulator_frequency_<<" Hz\n";
+		// std::cout<<"Publish frequency: "<<pub_frequency_<<" Hz\n";
+		// std::cout<<"vehicle_model0: "<<vehicle_model0_<<"\n";
+		// std::cout<<"vehicle_model1: "<<vehicle_model1_<<"\n";
+		//Ros info
+		RCLCPP_INFO(this->get_logger(), "Racecar simulator initialized");
+		RCLCPP_INFO(this->get_logger(), "Simulator frequency: %f Hz", simulator_frequency_);
+		RCLCPP_INFO(this->get_logger(), "Publish frequency: %f Hz", pub_frequency_);
+		RCLCPP_INFO(this->get_logger(), "vehicle_model0: %d", vehicle_model0_);
+		RCLCPP_INFO(this->get_logger(), "vehicle_model1: %d", vehicle_model1_);
+
+
 	}
 
 	// Simulator loop for updating car states
@@ -248,10 +263,9 @@ public:
 	{
 		setInput(car_state0_, desired_accel0_, desired_steer_ang0_, car0_params_);
 		setInput(car_state1_, desired_accel1_, desired_steer_ang1_, car1_params_);
-		// car_state0_ = updateStatePacejka(car_state0_, car0_params_);
-		// car_state1_ = updateStatePacejka(car_state1_, car1_params_);
-		car_state0_ = updateStateSingleTrack(car_state0_, car0_params_);
-		car_state1_ = updateStateSingleTrack(car_state1_, car1_params_);
+		
+		updateState();
+		
 		setTF();
 	}
 
@@ -264,8 +278,7 @@ public:
 			current_map_ = mark_vehicle_on_grid(current_map_, car_state0_);
 			current_map_ = mark_vehicle_on_grid(current_map_, car_state1_);
 		}
-		// current_map_ = mark_vehicle_on_grid(original_map_, car_state0_);
-		// current_map_ = mark_vehicle_on_grid(current_map_, car_state1_);
+		
 		pub_scan(car_state0_, "laser_model0", scan_data_float0_, scan0_pub_,scan_msg_data0_);
 		pub_scan(car_state1_, "laser_model1", scan_data_float1_, scan1_pub_,scan_msg_data1_);
 		state0Publisher();
@@ -319,6 +332,36 @@ public:
 		publishTransform("map", "base_link1", car_state1_.px, car_state1_.py, car_state1_.yaw);
 		publishTransform("front_left_hinge1", "front_left_wheel1", 0.0, 0.0, car_state1_.steer);
 		publishTransform("front_right_hinge1", "front_right_wheel1", 0.0, 0.0, car_state1_.steer);
+	}
+
+	void updateState()
+	{
+		if(vehicle_model0_ == 0)
+		{
+			car_state0_ = updateStateSingleTrack(car_state0_, car0_params_);
+		}
+		else if(vehicle_model0_ == 1)
+		{
+			car_state0_ = updateStatePacejka(car_state0_, car0_params_);
+		}
+		else
+		{
+			std::cout<<"Invalid vehicle model for car0"<<std::endl;
+		}
+
+		if(vehicle_model1_ == 0)
+		{
+			car_state1_ = updateStateSingleTrack(car_state1_, car1_params_);
+		}
+		else if(vehicle_model1_ == 1)
+		{
+			car_state1_ = updateStatePacejka(car_state1_, car1_params_);
+		}
+		else
+		{
+			std::cout<<"Invalid vehicle model for car1"<<std::endl;
+		}
+
 	}
 
 	// Callback for initial pose of car0
