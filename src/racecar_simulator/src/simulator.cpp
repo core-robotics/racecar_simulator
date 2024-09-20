@@ -217,27 +217,27 @@ public:
 			std::bind(&RacecarSimulator::pubLoop, this));
 
 		init_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
-			"initialpose", 1, std::bind(&RacecarSimulator::car0RvizCallback, this, std::placeholders::_1));
+			"initialpose", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort(), std::bind(&RacecarSimulator::car0RvizCallback, this, std::placeholders::_1));
 
 		goal_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-			"goal_pose", 1, std::bind(&RacecarSimulator::car1RvizCallback, this, std::placeholders::_1));
+			"goal_pose", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort(), std::bind(&RacecarSimulator::car1RvizCallback, this, std::placeholders::_1));
 
 		drive0_sub_ = this->create_subscription<ackermann_msgs::msg::AckermannDriveStamped>(
-			drive_topic0_, 1, std::bind(&RacecarSimulator::drive0Callback, this, std::placeholders::_1));
+			drive_topic0_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort(), std::bind(&RacecarSimulator::drive0Callback, this, std::placeholders::_1));
 
 		drive1_sub_ = this->create_subscription<ackermann_msgs::msg::AckermannDriveStamped>(
-			drive_topic1_, 1, std::bind(&RacecarSimulator::drive1Callback, this, std::placeholders::_1));
+			drive_topic1_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort(), std::bind(&RacecarSimulator::drive1Callback, this, std::placeholders::_1));
 
 		map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
-			"map", 1, std::bind(&RacecarSimulator::mapCallback, this, std::placeholders::_1));
+			"map", rclcpp::QoS(rclcpp::KeepLast(1)).reliable(), std::bind(&RacecarSimulator::mapCallback, this, std::placeholders::_1));
 
-		scan0_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic0_, 100);
-		scan1_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic1_, 100);
-		state0_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic0_, 10);
-		state1_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic1_, 10);
+		scan0_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic0_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
+		scan1_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic1_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
+		state0_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic0_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
+		state1_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic1_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
 		map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("map", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local());
-		collision0_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision0", 10);
-		collision1_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision1", 10);
+		collision0_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision0", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
+		collision1_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision1", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
 
 		scan_simulator_ = ScanSimulator2D(scan_beams_, scan_fov_, scan_std_dev_);
 		original_map_ = read_map_files(pgm_file_path_, yaml_file_path_);
@@ -251,8 +251,16 @@ public:
 		RCLCPP_INFO(this->get_logger(), "vehicle_model0: %d", vehicle_model0_);
 		RCLCPP_INFO(this->get_logger(), "vehicle_model1: %d", vehicle_model1_);
 
-
-
+		// c track
+		// car_state0_.px = 0.9655838012695312;
+		// car_state0_.py = -0.35892820358276367;
+		// porto
+		// car_state0_.px = -1.9128150939941406;
+		// car_state0_.py = -0.74951171875;
+		//levinelobby
+		car_state0_.px = 0.688;
+		car_state0_.py = -0.906;
+		car_state0_.yaw = -70 * M_PI / 180;
 	}
 
 	// Simulator loop for updating car states
@@ -260,9 +268,9 @@ public:
 	{
 		setInput(car_state0_, desired_accel0_, desired_steer_ang0_, car0_params_);
 		setInput(car_state1_, desired_accel1_, desired_steer_ang1_, car1_params_);
-		
+
 		updateState();
-		
+
 		setTF();
 	}
 
