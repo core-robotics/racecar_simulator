@@ -243,17 +243,14 @@ public:
 		original_map_ = read_map_files(pgm_file_path_, yaml_file_path_);
 		current_map_ = original_map_;
 
-		// std::cout<<"\n\n\nRacecar simulator initialized\n";
-		// std::cout<<"Simulator frequency: "<<simulator_frequency_<<" Hz\n";
-		// std::cout<<"Publish frequency: "<<pub_frequency_<<" Hz\n";
-		// std::cout<<"vehicle_model0: "<<vehicle_model0_<<"\n";
-		// std::cout<<"vehicle_model1: "<<vehicle_model1_<<"\n";
-		//Ros info
+
+		// Initialize simulator
 		RCLCPP_INFO(this->get_logger(), "Racecar simulator initialized");
 		RCLCPP_INFO(this->get_logger(), "Simulator frequency: %f Hz", simulator_frequency_);
 		RCLCPP_INFO(this->get_logger(), "Publish frequency: %f Hz", pub_frequency_);
 		RCLCPP_INFO(this->get_logger(), "vehicle_model0: %d", vehicle_model0_);
 		RCLCPP_INFO(this->get_logger(), "vehicle_model1: %d", vehicle_model1_);
+
 
 
 	}
