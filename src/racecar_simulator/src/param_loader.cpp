@@ -1,5 +1,5 @@
-#include "param_loader.h"
-#include "car_params.h"
+#include "racecar_simulator/param_loader.h"
+#include "racecar_simulator/car_params.h"
 
 Params load_parameters(rclcpp::Node * node)
 {
@@ -34,24 +34,101 @@ Params load_parameters(rclcpp::Node * node)
     node->declare_parameter("drive_topic0", "ackermann_cmd0");
     node->declare_parameter("state_topic0", "state0");
     node->declare_parameter("scan_topic0", "scan0");
-    node->declare_parameter("friction_coeff0", p0.friction_coeff);
-    node->declare_parameter("mass0", p0.mass);
-    node->declare_parameter("l_r0", p0.l_r);
-    node->declare_parameter("l_f0", p0.l_f);
-    node->declare_parameter("I_z0", p0.I_z);
-    node->declare_parameter("cs_f0", p0.cs_f);
-    node->declare_parameter("cs_r0", p0.cs_r);
-    node->declare_parameter("h_cg0", p0.h_cg);
-    node->declare_parameter("B_f0", p0.Bf);
-    node->declare_parameter("C_f0", p0.Cf);
-    node->declare_parameter("D_f0", p0.Df);
-    node->declare_parameter("B_r0", p0.Br);
-    node->declare_parameter("C_r0", p0.Cr);
-    node->declare_parameter("D_r0", p0.Dr);
-    node->declare_parameter("I_z0", p0.I_z);
-    
+    node->declare_parameter("mass0", 3.5);
+    node->declare_parameter("l_r0", 0.17145);
+    node->declare_parameter("l_f0", 0.17145);
+    node->declare_parameter("I_z0", 0.04712);
+    node->declare_parameter("h_cg0", 0.1);
+    node->declare_parameter("cs_f0", 1.0);
+    node->declare_parameter("cs_r0", 1.0);
+    node->declare_parameter("B_f0", 1.5);
+    node->declare_parameter("C_f0", 1.5);
+    node->declare_parameter("D_f0", 30.0);
+    node->declare_parameter("B_r0", 1.5);
+    node->declare_parameter("C_r0", 1.5);
+    node->declare_parameter("D_r0", 30.0);
+    node->declare_parameter("steer_max0", 4.0);
+    node->declare_parameter("steer_vel_max0", 4.0);
+    node->declare_parameter("speed_max0", 10.0);
+    node->declare_parameter("accel_max0", 40.0);
+    node->declare_parameter("decel_max0", 40.0);
+    node->declare_parameter("jerk_max0", 100.0);
+   
+
+    node->get_parameter("vehicle_model0", params.p0.model_type);
+    node->get_parameter("drive_topic0", params.drive_topic0);
+    node->get_parameter("state_topic0", params.state_topic0);
+    node->get_parameter("scan_topic0", params.scan_topic0);
+    node->get_parameter("mass0", params.p0.mass);
+    node->get_parameter("l_r0", params.p0.l_r);
+    node->get_parameter("l_f0", params.p0.l_f);
+    node->get_parameter("I_z0", params.p0.I_z);
+    node->get_parameter("h_cg0", params.p0.h_cg);
+    node->get_parameter("cs_f0", params.p0.cs_f);
+    node->get_parameter("cs_r0", params.p0.cs_r);
+    node->get_parameter("B_f0", params.p0.Bf);
+    node->get_parameter("C_f0", params.p0.Cf);
+    node->get_parameter("D_f0", params.p0.Df);
+    node->get_parameter("B_r0", params.p0.Br);
+    node->get_parameter("C_r0", params.p0.Cr);
+    node->get_parameter("D_r0", params.p0.Dr);
+    node->get_parameter("steer_max0", params.p0.steer_max);
+    node->get_parameter("steer_vel_max0", params.p0.steer_vel_max);
+    node->get_parameter("speed_max0", params.p0.speed_max);
+    node->get_parameter("accel_max0", params.p0.accel_max);
+    node->get_parameter("decel_max0", params.p0.decel_max);
+    node->get_parameter("jerk_max0", params.p0.jerk_max);
+
+    // Car1 parameters
+    node->declare_parameter("vehicle_model1",1);
+    node->declare_parameter("drive_topic1", "ackermann_cmd1");
+    node->declare_parameter("state_topic1", "state1");
+    node->declare_parameter("scan_topic1", "scan1");
+    node->declare_parameter("mass1", 3.5);
+    node->declare_parameter("l_r1", 0.17145);
+    node->declare_parameter("l_f1", 0.17145);
+    node->declare_parameter("I_z1", 0.04712);
+    node->declare_parameter("h_cg1", 0.1);
+    node->declare_parameter("cs_f1", 1.0);
+    node->declare_parameter("cs_r1", 1.0);
+    node->declare_parameter("B_f1", 1.5);
+    node->declare_parameter("C_f1", 1.5);
+    node->declare_parameter("D_f1", 30.0);
+    node->declare_parameter("B_r1", 1.5);
+    node->declare_parameter("C_r1", 1.5);
+    node->declare_parameter("D_r1", 30.0);
+    node->declare_parameter("steer_max1", 0.4);
+    node->declare_parameter("steer_vel_max1", 0.041);
+    node->declare_parameter("speed_max1", 10.0);
+    node->declare_parameter("accel_max1", 4.0);
+    node->declare_parameter("decel_max1", 4.0);
+    node->declare_parameter("jerk_max1", 1.0);
+
+    node->get_parameter("vehicle_model1", params.p1.model_type);
+    node->get_parameter("drive_topic1", params.drive_topic1);
+    node->get_parameter("state_topic1", params.state_topic1);
+    node->get_parameter("scan_topic1", params.scan_topic1);
+    node->get_parameter("mass1", params.p1.mass);
+    node->get_parameter("l_r1", params.p1.l_r);
+    node->get_parameter("l_f1", params.p1.l_f);
+    node->get_parameter("I_z1", params.p1.I_z);
+    node->get_parameter("h_cg1", params.p1.h_cg);
+    node->get_parameter("cs_f1", params.p1.cs_f);
+    node->get_parameter("cs_r1", params.p1.cs_r);
+    node->get_parameter("B_f1", params.p1.Bf);
+    node->get_parameter("C_f1", params.p1.Cf);
+    node->get_parameter("D_f1", params.p1.Df);
+    node->get_parameter("B_r1", params.p1.Br);
+    node->get_parameter("C_r1", params.p1.Cr);
+    node->get_parameter("D_r1", params.p1.Dr);
+    node->get_parameter("steer_max1", params.p1.steer_max);
+    node->get_parameter("steer_vel_max1", params.p1.steer_vel_max);
+    node->get_parameter("speed_max1", params.p1.speed_max);
+    node->get_parameter("accel_max1", params.p1.accel_max);
+    node->get_parameter("decel_max1", params.p1.decel_max);
+    node->get_parameter("jerk_max1", params.p1.jerk_max);
 
 
-
+    return params;
     
 };

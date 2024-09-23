@@ -26,10 +26,12 @@ add_executable(simulator src/simulator.cpp)
 
 add_library(scan_simulator_2d src/scan_simulator_2d.cpp)
 add_library(distance_transform src/distance_transform.cpp)
+add_library(param_loader src/param_loader.cpp)
 
 # Link libraries
-target_link_libraries(simulator scan_simulator_2d yaml-cpp)
+target_link_libraries(simulator scan_simulator_2d param_loader yaml-cpp)
 target_link_libraries(scan_simulator_2d distance_transform)
+
 
 # Link executables to required libraries
 ament_target_dependencies(simulator
@@ -42,6 +44,10 @@ ament_target_dependencies(simulator
   nav_msgs
   sensor_msgs
   yaml-cpp
+)
+
+ament_target_dependencies(param_loader
+  rclcpp
 )
 
 

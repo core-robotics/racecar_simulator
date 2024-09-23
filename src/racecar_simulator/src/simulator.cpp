@@ -14,6 +14,8 @@
 #include "sensor_msgs/msg/laser_scan.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "racecar_simulator/scan_simulator_2d.hpp"
+#include "racecar_simulator/param_loader.h"
+#include "racecar_simulator/car_params.h"
 #include <yaml-cpp/yaml.h>
 #include <fstream>
 
@@ -89,6 +91,8 @@ public:
 	RacecarSimulator()
 		: Node("racecar_simulator")
 	{
+		// Load parameters
+		// Params params = load_parameters(this);
 		// General parameters
 		this->declare_parameter("simulator_frequency", 1000.0);
 		this->declare_parameter("pub_frequency", 40.0);

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <rclcpp/rclcpp.hpp>
-#include "car_params.h"
+#include "racecar_simulator/car_params.h"
 
 struct Params
 {
