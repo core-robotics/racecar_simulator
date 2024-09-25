@@ -1,21 +1,25 @@
 #include <chrono>
 #include <functional>
 #include <memory>
-#include <rclcpp/rclcpp.hpp>
-#include <tf2/LinearMath/Matrix3x3.h>
-#include <tf2/LinearMath/Quaternion.h>
-#include <tf2_ros/transform_broadcaster.h>
+#include <yaml-cpp/yaml.h>
+#include <fstream>
+
+#include "rclcpp/rclcpp.hpp"
+#include "tf2/LinearMath/Matrix3x3.h"
+#include "tf2/LinearMath/Quaternion.h"
+#include "tf2_ros/transform_broadcaster.h"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
 #include "ackermann_msgs/msg/ackermann_drive_stamped.hpp"
 #include "control_msgs/msg/car_state.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
+#include "nav_msgs/msg/odometry.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "racecar_simulator/scan_simulator_2d.hpp"
-#include <yaml-cpp/yaml.h>
-#include <fstream>
+
 
 using namespace std::chrono_literals; // Use chrono literals for timing
 using namespace racecar_simulator;
@@ -40,6 +44,8 @@ private:
 	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub_;
 	rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr collision0_pub_;
 	rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr collision1_pub_;
+	rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom0_pub_;
+	rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom1_pub_;
 
 	control_msgs::msg::CarState car_state0_, car_state1_;
 
@@ -206,7 +212,7 @@ public:
 		auto pub_period = std::chrono::duration<double>(1.0 / pub_frequency_);
 
 		// Create publishers and subscribers
-		tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
+		tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
 		simulator_timer_ = this->create_wall_timer(
 			std::chrono::duration_cast<std::chrono::milliseconds>(simulator_period),
@@ -238,6 +244,9 @@ public:
 		map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("map", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local());
 		collision0_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision0", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
 		collision1_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision1", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
+		odom0_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom0", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
+		odom1_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom1", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
+
 
 		scan_simulator_ = ScanSimulator2D(scan_beams_, scan_fov_, scan_std_dev_);
 		original_map_ = read_map_files(pgm_file_path_, yaml_file_path_);
@@ -294,6 +303,8 @@ public:
 		state1Publisher();
 		pub_colision(scan_msg_data0_, collision0_pub_);
 		pub_colision(scan_msg_data1_, collision1_pub_);
+		pub_odom(car_state0_, odom0_pub_);
+		pub_odom(car_state1_, odom1_pub_);
 		pub_map(current_map_);
 	}
 
@@ -1027,6 +1038,32 @@ public:
 		collision_msg.data = check_colision(scan_data);
 		collision_pub->publish(collision_msg);
 	}
+
+	void pub_odom(
+		const control_msgs::msg::CarState &state,
+		rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub)
+	{
+		nav_msgs::msg::Odometry odom_msg;
+		odom_msg.header.stamp = this->get_clock()->now();
+		odom_msg.header.frame_id = "odom";
+		odom_msg.child_frame_id = "base_link";
+		odom_msg.pose.pose.position.x = state.px;
+		odom_msg.pose.pose.position.y = state.py;
+		odom_msg.pose.pose.position.z = 0.0;
+		tf2::Quaternion q;
+		q.setRPY(0, 0, state.yaw);
+		odom_msg.pose.pose.orientation=tf2::toMsg(q); 
+
+
+		odom_msg.twist.twist.linear.x = state.v;
+		odom_msg.twist.twist.linear.y = 0.0;
+		odom_msg.twist.twist.linear.z = 0.0;
+		odom_msg.twist.twist.angular.x = 0.0;
+		odom_msg.twist.twist.angular.y = 0.0;
+		odom_msg.twist.twist.angular.z = state.omega;
+		odom_pub->publish(odom_msg);
+	}
+	
 };
 
 int main(int argc, char *argv[])
