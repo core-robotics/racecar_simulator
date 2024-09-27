@@ -31,7 +31,7 @@ class RacecarSimulator : public rclcpp::Node
 private:
 	rclcpp::TimerBase::SharedPtr simulator_timer_;
 	rclcpp::TimerBase::SharedPtr pub_timer_;
-	std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+	std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 	rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr init_pose_sub_;
 	rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_pose_sub_;
 	rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive0_sub_;
@@ -303,8 +303,12 @@ public:
 		state1Publisher();
 		pub_colision(scan_msg_data0_, collision0_pub_);
 		pub_colision(scan_msg_data1_, collision1_pub_);
-		pub_odom(car_state0_, odom0_pub_);
-		pub_odom(car_state1_, odom1_pub_);
+		// pub_odom(car_state0_, odom0_pub_);
+		// pub_odom(car_state1_, odom1_pub_);
+		// pub_odom(car_state0_, "odom0", odom0_pub_);
+		// pub_odom(car_state1_, "odom1", odom1_pub_);
+		pub_odom(car_state0_, "base_link0", "odom0", odom0_pub_);
+		pub_odom(car_state1_, "base_link1", "odom1", odom1_pub_);
 		pub_map(current_map_);
 	}
 
@@ -1041,12 +1045,15 @@ public:
 
 	void pub_odom(
 		const control_msgs::msg::CarState &state,
+		const std::string &frame_id,
+		const std::string &child_frame_id,
 		rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub)
 	{
 		nav_msgs::msg::Odometry odom_msg;
 		odom_msg.header.stamp = this->get_clock()->now();
-		odom_msg.header.frame_id = "odom";
-		odom_msg.child_frame_id = "base_link";
+		// odom_msg.header.frame_id = "odom";
+		odom_msg.header.frame_id = frame_id;
+		odom_msg.child_frame_id = child_frame_id;
 		odom_msg.pose.pose.position.x = state.px;
 		odom_msg.pose.pose.position.y = state.py;
 		odom_msg.pose.pose.position.z = 0.0;
