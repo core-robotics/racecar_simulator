@@ -15,6 +15,7 @@ find_package(ackermann_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(control_msgs REQUIRED)
 
@@ -39,6 +40,7 @@ ament_target_dependencies(simulator
   std_msgs
   geometry_msgs
   tf2_ros
+  tf2_geometry_msgs
   ackermann_msgs
   control_msgs
   nav_msgs

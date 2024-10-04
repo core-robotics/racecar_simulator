@@ -1,23 +1,26 @@
 #include <chrono>
 #include <functional>
 #include <memory>
-#include <rclcpp/rclcpp.hpp>
-#include <tf2/LinearMath/Matrix3x3.h>
-#include <tf2/LinearMath/Quaternion.h>
-#include <tf2_ros/transform_broadcaster.h>
+#include <yaml-cpp/yaml.h>
+#include <fstream>
+
+#include "rclcpp/rclcpp.hpp"
+#include "tf2/LinearMath/Matrix3x3.h"
+#include "tf2/LinearMath/Quaternion.h"
+#include "tf2_ros/transform_broadcaster.h"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
 #include "ackermann_msgs/msg/ackermann_drive_stamped.hpp"
 #include "control_msgs/msg/car_state.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
+#include "nav_msgs/msg/odometry.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
+#include "sensor_msgs/msg/imu.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "racecar_simulator/scan_simulator_2d.hpp"
-#include "racecar_simulator/param_loader.h"
-#include "racecar_simulator/car_params.h"
-#include <yaml-cpp/yaml.h>
-#include <fstream>
+
 
 using namespace std::chrono_literals; // Use chrono literals for timing
 using namespace racecar_simulator;
@@ -29,12 +32,14 @@ class RacecarSimulator : public rclcpp::Node
 private:
 	rclcpp::TimerBase::SharedPtr simulator_timer_;
 	rclcpp::TimerBase::SharedPtr pub_timer_;
-	std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+
+	std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 	rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr init_pose_sub_;
 	rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_pose_sub_;
 	rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive0_sub_;
 	rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive1_sub_;
 	rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
+	
 	rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan0_pub_;
 	rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan1_pub_;
 	rclcpp::Publisher<control_msgs::msg::CarState>::SharedPtr state0_pub_;
@@ -42,6 +47,11 @@ private:
 	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub_;
 	rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr collision0_pub_;
 	rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr collision1_pub_;
+	rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom0_pub_;
+	rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom1_pub_;
+	rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu0_pub_;
+	rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu1_pub_;
+
 
 	control_msgs::msg::CarState car_state0_, car_state1_;
 
@@ -210,7 +220,7 @@ public:
 		auto pub_period = std::chrono::duration<double>(1.0 / pub_frequency_);
 
 		// Create publishers and subscribers
-		tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
+		tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
 		simulator_timer_ = this->create_wall_timer(
 			std::chrono::duration_cast<std::chrono::milliseconds>(simulator_period),
@@ -235,13 +245,18 @@ public:
 		map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
 			"map", rclcpp::QoS(rclcpp::KeepLast(1)).reliable(), std::bind(&RacecarSimulator::mapCallback, this, std::placeholders::_1));
 
-		scan0_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic0_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
-		scan1_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic1_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
+		scan0_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic0_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
+		scan1_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic1_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
 		state0_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic0_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
 		state1_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic1_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
 		map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("map", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local());
 		collision0_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision0", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
 		collision1_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision1", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
+		odom0_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom0", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
+		odom1_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom1", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
+		imu0_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("imu0", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
+		imu1_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("imu1", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
+
 
 		scan_simulator_ = ScanSimulator2D(scan_beams_, scan_fov_, scan_std_dev_);
 		original_map_ = read_map_files(pgm_file_path_, yaml_file_path_);
@@ -294,6 +309,11 @@ public:
 		state1Publisher();
 		pub_colision(scan_msg_data0_, collision0_pub_);
 		pub_colision(scan_msg_data1_, collision1_pub_);
+		pub_odom(car_state0_, "base_link0", "odom0", odom0_pub_);
+		pub_odom(car_state1_, "base_link1", "odom1", odom1_pub_);
+		pub_imu(car_state0_, "base_link0", imu0_pub_);
+		pub_imu(car_state1_, "base_link1", imu1_pub_);
+
 		pub_map(current_map_);
 	}
 
@@ -1027,6 +1047,82 @@ public:
 		collision_msg.data = check_colision(scan_data);
 		collision_pub->publish(collision_msg);
 	}
+
+	void pub_odom(
+		const control_msgs::msg::CarState &state,
+		const std::string &frame_id,
+		const std::string &child_frame_id,
+		rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub)
+	{
+		nav_msgs::msg::Odometry odom_msg;
+		odom_msg.header.stamp = this->get_clock()->now();
+		// odom_msg.header.frame_id = "odom";
+		odom_msg.header.frame_id = frame_id;
+		odom_msg.child_frame_id = child_frame_id;
+		odom_msg.pose.pose.position.x = state.px;
+		odom_msg.pose.pose.position.y = state.py;
+		odom_msg.pose.pose.position.z = 0.0;
+		tf2::Quaternion q;
+		q.setRPY(0, 0, state.yaw);
+		odom_msg.pose.pose.orientation=tf2::toMsg(q); 
+
+
+		odom_msg.twist.twist.linear.x = state.v;
+		odom_msg.twist.twist.linear.y = 0.0;
+		odom_msg.twist.twist.linear.z = 0.0;
+		odom_msg.twist.twist.angular.x = 0.0;
+		odom_msg.twist.twist.angular.y = 0.0;
+		odom_msg.twist.twist.angular.z = state.omega;
+		odom_pub->publish(odom_msg);
+	}
+
+	void pub_imu(
+		const control_msgs::msg::CarState &state,
+		const std::string &frame_id,
+		rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub)
+	{
+		sensor_msgs::msg::Imu imu_msg;
+		imu_msg.header.stamp = this->get_clock()->now();
+		imu_msg.header.frame_id = frame_id;
+
+		tf2::Quaternion q;
+		q.setRPY(0, 0, state.yaw);
+		imu_msg.orientation = tf2::toMsg(q);
+		imu_msg.orientation_covariance = { -1, 0, 0,
+										  0, 0, 0,
+										  0, 0, 0 };
+
+		imu_msg.angular_velocity.x = 0.0;
+		imu_msg.angular_velocity.y = 0.0;
+		imu_msg.angular_velocity.z = state.omega;
+		imu_msg.angular_velocity_covariance = { -1, 0, 0,
+												0, 0, 0,
+												0, 0, 0 };
+
+		imu_msg.linear_acceleration.x = state.ax;
+		imu_msg.linear_acceleration.y = state.ay;
+		imu_msg.linear_acceleration.z = 0.0;
+		imu_msg.linear_acceleration_covariance = { -1, 0, 0,
+													0, 0, 0,
+													0, 0, 0 };
+		if(scan_noise_mode_)
+		{
+			imu_msg.orientation.x += gen_noise(0.01);
+			imu_msg.orientation.y += gen_noise(0.01);
+			imu_msg.orientation.z += gen_noise(0.01);
+			imu_msg.angular_velocity.x += gen_noise(0.01);
+			imu_msg.angular_velocity.y += gen_noise(0.01);
+			imu_msg.angular_velocity.z += gen_noise(0.01);
+			imu_msg.linear_acceleration.x += gen_noise(0.01);
+			imu_msg.linear_acceleration.y += gen_noise(0.01);
+			imu_msg.linear_acceleration.z += gen_noise(0.01);
+		}
+		imu_pub->publish(imu_msg);
+
+	}
+
+
+	
 };
 
 int main(int argc, char *argv[])
