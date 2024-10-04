@@ -17,6 +17,7 @@
 #include "nav_msgs/msg/occupancy_grid.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
+#include "sensor_msgs/msg/imu.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "racecar_simulator/scan_simulator_2d.hpp"
 
@@ -31,12 +32,14 @@ class RacecarSimulator : public rclcpp::Node
 private:
 	rclcpp::TimerBase::SharedPtr simulator_timer_;
 	rclcpp::TimerBase::SharedPtr pub_timer_;
+
 	std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 	rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr init_pose_sub_;
 	rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_pose_sub_;
 	rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive0_sub_;
 	rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive1_sub_;
 	rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
+	
 	rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan0_pub_;
 	rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan1_pub_;
 	rclcpp::Publisher<control_msgs::msg::CarState>::SharedPtr state0_pub_;
@@ -46,6 +49,9 @@ private:
 	rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr collision1_pub_;
 	rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom0_pub_;
 	rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom1_pub_;
+	rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu0_pub_;
+	rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu1_pub_;
+
 
 	control_msgs::msg::CarState car_state0_, car_state1_;
 
@@ -237,15 +243,17 @@ public:
 		map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
 			"map", rclcpp::QoS(rclcpp::KeepLast(1)).reliable(), std::bind(&RacecarSimulator::mapCallback, this, std::placeholders::_1));
 
-		scan0_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic0_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
-		scan1_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic1_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
+		scan0_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic0_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
+		scan1_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic1_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
 		state0_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic0_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
 		state1_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic1_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
 		map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("map", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local());
 		collision0_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision0", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
 		collision1_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision1", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
-		odom0_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom0", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
-		odom1_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom1", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
+		odom0_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom0", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
+		odom1_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom1", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
+		imu0_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("imu0", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
+		imu1_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("imu1", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
 
 
 		scan_simulator_ = ScanSimulator2D(scan_beams_, scan_fov_, scan_std_dev_);
@@ -303,12 +311,11 @@ public:
 		state1Publisher();
 		pub_colision(scan_msg_data0_, collision0_pub_);
 		pub_colision(scan_msg_data1_, collision1_pub_);
-		// pub_odom(car_state0_, odom0_pub_);
-		// pub_odom(car_state1_, odom1_pub_);
-		// pub_odom(car_state0_, "odom0", odom0_pub_);
-		// pub_odom(car_state1_, "odom1", odom1_pub_);
 		pub_odom(car_state0_, "base_link0", "odom0", odom0_pub_);
 		pub_odom(car_state1_, "base_link1", "odom1", odom1_pub_);
+		pub_imu(car_state0_, "base_link0", imu0_pub_);
+		pub_imu(car_state1_, "base_link1", imu1_pub_);
+
 		pub_map(current_map_);
 	}
 
@@ -1070,6 +1077,53 @@ public:
 		odom_msg.twist.twist.angular.z = state.omega;
 		odom_pub->publish(odom_msg);
 	}
+
+	void pub_imu(
+		const control_msgs::msg::CarState &state,
+		const std::string &frame_id,
+		rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub)
+	{
+		sensor_msgs::msg::Imu imu_msg;
+		imu_msg.header.stamp = this->get_clock()->now();
+		imu_msg.header.frame_id = frame_id;
+
+		tf2::Quaternion q;
+		q.setRPY(0, 0, state.yaw);
+		imu_msg.orientation = tf2::toMsg(q);
+		imu_msg.orientation_covariance = { -1, 0, 0,
+										  0, 0, 0,
+										  0, 0, 0 };
+
+		imu_msg.angular_velocity.x = 0.0;
+		imu_msg.angular_velocity.y = 0.0;
+		imu_msg.angular_velocity.z = state.omega;
+		imu_msg.angular_velocity_covariance = { -1, 0, 0,
+												0, 0, 0,
+												0, 0, 0 };
+
+		imu_msg.linear_acceleration.x = state.ax;
+		imu_msg.linear_acceleration.y = state.ay;
+		imu_msg.linear_acceleration.z = 0.0;
+		imu_msg.linear_acceleration_covariance = { -1, 0, 0,
+													0, 0, 0,
+													0, 0, 0 };
+		if(scan_noise_mode_)
+		{
+			imu_msg.orientation.x += gen_noise(0.01);
+			imu_msg.orientation.y += gen_noise(0.01);
+			imu_msg.orientation.z += gen_noise(0.01);
+			imu_msg.angular_velocity.x += gen_noise(0.01);
+			imu_msg.angular_velocity.y += gen_noise(0.01);
+			imu_msg.angular_velocity.z += gen_noise(0.01);
+			imu_msg.linear_acceleration.x += gen_noise(0.01);
+			imu_msg.linear_acceleration.y += gen_noise(0.01);
+			imu_msg.linear_acceleration.z += gen_noise(0.01);
+		}
+		imu_pub->publish(imu_msg);
+
+	}
+
+
 	
 };
 
