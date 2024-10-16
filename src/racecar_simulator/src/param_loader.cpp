@@ -33,7 +33,7 @@ Params load_parameters(rclcpp::Node * node)
     node->declare_parameter("vehicle_model0",1);
     node->declare_parameter("drive_topic0", "ackermann_cmd0");
     node->declare_parameter("state_topic0", "state0");
-    node->declare_parameter("scan_topic0", "scan0");
+    node->declare_parameter("scan_topic0", "scan");
     node->declare_parameter("mass0", 3.5);
     node->declare_parameter("l_r0", 0.17145);
     node->declare_parameter("l_f0", 0.17145);
@@ -131,4 +131,4 @@ Params load_parameters(rclcpp::Node * node)
 
     return params;
     
-};
+}

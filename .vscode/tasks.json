@@ -4,7 +4,7 @@
         {
 			"label": "build all packages",
 			"type": "shell",
-			"command": "source /opt/ros/humble/setup.bash &&  colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug && source install/setup.bash",
+			"command": "source /opt/ros/foxy/setup.bash &&  colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug && source install/setup.bash",
 			"group": {
 				"kind": "build",
 				"isDefault": true
