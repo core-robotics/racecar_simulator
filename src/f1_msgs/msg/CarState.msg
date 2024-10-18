@@ -4,6 +4,7 @@ float64 yaw
 float64 v
 float64 vx
 float64 vy
+float64 v_dot
 float64 omega   # angular velocity
 float64 a
 float64 ax

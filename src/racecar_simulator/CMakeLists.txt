@@ -17,7 +17,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
-find_package(control_msgs REQUIRED)
+find_package(f1_msgs REQUIRED)
 
 # Include directories
 include_directories(include)
@@ -42,7 +42,7 @@ ament_target_dependencies(simulator
   tf2_ros
   tf2_geometry_msgs
   ackermann_msgs
-  control_msgs
+  f1_msgs
   nav_msgs
   sensor_msgs
   yaml-cpp

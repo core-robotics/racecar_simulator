@@ -320,7 +320,7 @@ Visualization Manager:
       Color: 255; 255; 255
       Color Transformer: FlatColor
       Decay Time: 0
-      Enabled: false
+      Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Max Intensity: 0.06999969482421875
@@ -340,7 +340,7 @@ Visualization Manager:
         Value: /residual_errors
       Use Fixed Frame: true
       Use rainbow: true
-      Value: false
+      Value: true
     - Alpha: 1
       Axes Length: 1
       Axes Radius: 0.10000000149011612
@@ -369,8 +369,8 @@ Visualization Manager:
       Axis: Z
       Channel Name: intensity
       Class: rviz_default_plugins/LaserScan
-      Color: 255; 255; 255
-      Color Transformer: Intensity
+      Color: 0; 0; 255
+      Color Transformer: FlatColor
       Decay Time: 0
       Enabled: true
       Invert Rainbow: false
@@ -436,16 +436,16 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 13.98991584777832
+      Distance: 12.27782154083252
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 1.1716233491897583
-        Y: -4.418449878692627
-        Z: -0.0004904794041067362
+        X: 0.7797542810440063
+        Y: -4.441976547241211
+        Z: -0.0008821861702017486
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
@@ -472,5 +472,5 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 948
-  X: 930
-  Y: -29
+  X: 245
+  Y: -32

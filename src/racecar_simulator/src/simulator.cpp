@@ -13,7 +13,7 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
 #include "ackermann_msgs/msg/ackermann_drive_stamped.hpp"
-#include "control_msgs/msg/car_state.hpp"
+#include "f1_msgs/msg/car_state.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
@@ -42,8 +42,8 @@ private:
 	
 	rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan0_pub_;
 	rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan1_pub_;
-	rclcpp::Publisher<control_msgs::msg::CarState>::SharedPtr state0_pub_;
-	rclcpp::Publisher<control_msgs::msg::CarState>::SharedPtr state1_pub_;
+	rclcpp::Publisher<f1_msgs::msg::CarState>::SharedPtr state0_pub_;
+	rclcpp::Publisher<f1_msgs::msg::CarState>::SharedPtr state1_pub_;
 	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub_;
 	rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr collision0_pub_;
 	rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr collision1_pub_;
@@ -53,7 +53,7 @@ private:
 	rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu1_pub_;
 
 
-	control_msgs::msg::CarState car_state0_, car_state1_;
+	f1_msgs::msg::CarState car_state0_, car_state1_;
 
 	ScanSimulator2D scan_simulator_;
 	double map_free_threshold;
@@ -247,8 +247,8 @@ public:
 
 		scan0_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic0_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
 		scan1_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic1_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
-		state0_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic0_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
-		state1_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic1_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
+		state0_pub_ = this->create_publisher<f1_msgs::msg::CarState>(state_topic0_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
+		state1_pub_ = this->create_publisher<f1_msgs::msg::CarState>(state_topic1_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
 		map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("map", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local());
 		collision0_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision0", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
 		collision1_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision1", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
@@ -314,7 +314,7 @@ public:
 		pub_imu(car_state0_, "base_link", imu0_pub_);
 		pub_imu(car_state1_, "base_link1", imu1_pub_);
 
-		// pub_map(current_map_);
+		pub_map(current_map_);
 	}
 
 	// Publish transform between frames
@@ -474,7 +474,7 @@ public:
 		state1_pub_->publish(car_state1_);
 	}
 
-	void setInput(control_msgs::msg::CarState &state, double desired_accel, double desired_steer_ang, CarParams car_params)
+	void setInput(f1_msgs::msg::CarState &state, double desired_accel, double desired_steer_ang, CarParams car_params)
 	{
 
 		double dt = 1.0 / simulator_frequency_;
@@ -531,9 +531,9 @@ public:
 		}
 	}
 
-	control_msgs::msg::CarState update_k(const control_msgs::msg::CarState start, double accel, double steer_vel, CarParams p, double dt)
+	f1_msgs::msg::CarState update_k(const f1_msgs::msg::CarState start, double accel, double steer_vel, CarParams p, double dt)
 	{
-		control_msgs::msg::CarState end;
+		f1_msgs::msg::CarState end;
 
 		// compute first derivatives of state
 		double x_dot = start.v * std::cos(start.yaw);
@@ -561,7 +561,7 @@ public:
 
 		return end;
 	}
-	control_msgs::msg::CarState updateStateSingleTrack(control_msgs::msg::CarState &start, CarParams p)
+	f1_msgs::msg::CarState updateStateSingleTrack(f1_msgs::msg::CarState &start, CarParams p)
 	{
 		if (abs(start.v) <0.1)
 		{
@@ -600,7 +600,7 @@ public:
                       start.omega; 
 
 
-		control_msgs::msg::CarState end;
+		f1_msgs::msg::CarState end;
 		end.px = start.px + x_dot * dt;
 		end.py = start.py + y_dot * dt;
 		end.yaw = start.yaw + start.omega * dt;
@@ -649,14 +649,14 @@ public:
 	}
 
 	// Update car state
-	control_msgs::msg::CarState updateStatePacejka(control_msgs::msg::CarState &start, CarParams car_params)
+	f1_msgs::msg::CarState updateStatePacejka(f1_msgs::msg::CarState &start, CarParams car_params)
 	{
 		if (abs(start.v) < 1.0e-8)
 		{
 			return update_k(start, start.accel, start.steer_vel, car_params, 1.0 / simulator_frequency_);
 		}
 		// Implement the update function for car
-		control_msgs::msg::CarState end;
+		f1_msgs::msg::CarState end;
 		double dt = 1.0 / simulator_frequency_;
 		double a_f = -atan2(start.vy + car_params.l_f * start.omega, start.vx) + start.steer;
 		double F_fy = car_params.D_f * sin(car_params.C_f * atan(car_params.B_f * a_f));
@@ -785,7 +785,7 @@ public:
 	}
 
 	// Publish scan data
-	void pub_scan(const control_msgs::msg::CarState &state,
+	void pub_scan(const f1_msgs::msg::CarState &state,
 				  const std::string &scan_frame,
 				  std::vector<float> &scan_data_float,
 				  rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan_pub,
@@ -958,7 +958,7 @@ public:
 
 	nav_msgs::msg::OccupancyGrid mark_vehicle_on_grid(
 		const nav_msgs::msg::OccupancyGrid &grid,
-		control_msgs::msg::CarState &state)
+		f1_msgs::msg::CarState &state)
 	{
 		// 복사본을 생성 (원본 데이터를 손상시키지 않기 위해)
 		nav_msgs::msg::OccupancyGrid modified_grid = grid;
@@ -1049,7 +1049,7 @@ public:
 	}
 
 	void pub_odom(
-		const control_msgs::msg::CarState &state,
+		const f1_msgs::msg::CarState &state,
 		const std::string &frame_id,
 		const std::string &child_frame_id,
 		rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub)
@@ -1077,7 +1077,7 @@ public:
 	}
 
 	void pub_imu(
-		const control_msgs::msg::CarState &state,
+		const f1_msgs::msg::CarState &state,
 		const std::string &frame_id,
 		rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub)
 	{
