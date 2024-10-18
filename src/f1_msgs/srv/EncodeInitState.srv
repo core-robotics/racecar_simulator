@@ -1,4 +1,0 @@
-CarState[] state
----
-std_msgs/Float32MultiArray data_response
-
