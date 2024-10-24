@@ -17,6 +17,9 @@
   <exec_depend>f1_msgs</exec_depend>
   <exec_depend>nav_msgs</exec_depend>
 
+  <depend>visualization_msgs</depend>
+  <depend>interactive_markers</depend>
+
 
   <!-- Test Dependencies -->
   <!-- Uncomment and add if you have test dependencies -->

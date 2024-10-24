@@ -3,6 +3,8 @@
 #include <memory>
 #include <yaml-cpp/yaml.h>
 #include <fstream>
+#include <vector>
+#include <interactive_markers/interactive_marker_server.hpp>
 
 #include "rclcpp/rclcpp.hpp"
 #include "tf2/LinearMath/Matrix3x3.h"
@@ -21,11 +23,8 @@
 #include "std_msgs/msg/bool.hpp"
 #include "racecar_simulator/scan_simulator_2d.hpp"
 
-
 using namespace std::chrono_literals; // Use chrono literals for timing
 using namespace racecar_simulator;
-
-
 
 class RacecarSimulator : public rclcpp::Node
 {
@@ -39,7 +38,8 @@ private:
 	rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive0_sub_;
 	rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive1_sub_;
 	rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
-	
+	rclcpp::Subscription<geometry_msgs::msg::PointStamped>::SharedPtr clicked_point_sub_;
+
 	rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan0_pub_;
 	rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan1_pub_;
 	rclcpp::Publisher<f1_msgs::msg::CarState>::SharedPtr state0_pub_;
@@ -83,6 +83,7 @@ private:
 	std::vector<float> scan_data_float0_, scan_data_float1_;
 	sensor_msgs::msg::LaserScan scan_msg_data0_, scan_msg_data1_;
 
+	std::vector<geometry_msgs::msg::PointStamped> clicked_points_;
 
 	bool map_exists_ = false;
 	nav_msgs::msg::OccupancyGrid original_map_;
@@ -97,10 +98,54 @@ private:
     float y_min = -0.1397;
     float y_max = 0.1397;
 
+	std::shared_ptr<interactive_markers::InteractiveMarkerServer> im_server_;
+
 public:
 	RacecarSimulator()
 		: Node("racecar_simulator")
 	{
+		im_server_ = std::make_shared<interactive_markers::InteractiveMarkerServer>("racecar_sim", this);
+		if (!im_server_) {
+			RCLCPP_ERROR(this->get_logger(), "Interactive Marker Server initialization failed.");
+		} else {
+			RCLCPP_INFO(this->get_logger(), "Interactive Marker Server initialized successfully.");
+		}
+		visualization_msgs::msg::InteractiveMarker clear_obs_button;
+        clear_obs_button.header.frame_id = "map";
+        // clear_obs_button.pose.position.x = origin_x+(1/3)*map_width*map_resolution;
+        // clear_obs_button.pose.position.y = origin_y+(1/3)*map_height*map_resolution;
+        // TODO: find better positioning of buttons
+        clear_obs_button.pose.position.x = 0.0;
+        clear_obs_button.pose.position.y = 0.0;
+		clear_obs_button.pose.position.z = 0.0;
+        clear_obs_button.scale = 1.0;
+        clear_obs_button.name = "clear_obstacles";
+        clear_obs_button.description = "Clear Obstacles\n(Left Click)";
+
+        // make a box for the button
+        visualization_msgs::msg::Marker clear_obs_marker;
+        clear_obs_marker.type = visualization_msgs::msg::Marker::CUBE;
+        clear_obs_marker.scale.x = clear_obs_button.scale*0.45;
+        clear_obs_marker.scale.y = clear_obs_button.scale*0.65;
+        clear_obs_marker.scale.z = clear_obs_button.scale*0.45;
+        clear_obs_marker.color.r = 0.0;
+        clear_obs_marker.color.g = 1.0;
+        clear_obs_marker.color.b = 0.0;
+        clear_obs_marker.color.a = 1.0;
+
+        visualization_msgs::msg::InteractiveMarkerControl clear_obs_control;
+        clear_obs_control.interaction_mode = visualization_msgs::msg::InteractiveMarkerControl::BUTTON;
+        clear_obs_control.always_visible = false;
+        clear_obs_control.name = "clear_obstacles_control";
+		clear_obs_control.markers.push_back(clear_obs_marker);
+
+        clear_obs_button.controls.push_back(clear_obs_control);
+
+        im_server_->insert(clear_obs_button);
+        im_server_->setCallback(clear_obs_button.name, std::bind(&RacecarSimulator::clear_obstacles, this, std::placeholders::_1));
+
+        // im_server_->applyChanges();
+
 		// Load parameters
 		// Params params = load_parameters(this);
 		// General parameters
@@ -244,6 +289,9 @@ public:
 
 		map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
 			"map", rclcpp::QoS(rclcpp::KeepLast(1)).reliable(), std::bind(&RacecarSimulator::mapCallback, this, std::placeholders::_1));
+
+		clicked_point_sub_ = this->create_subscription<geometry_msgs::msg::PointStamped>(
+			"clicked_point", rclcpp::QoS(rclcpp::KeepLast(1)).reliable(), std::bind(&RacecarSimulator::clickedPointCallback, this, std::placeholders::_1));
 
 		scan0_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic0_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
 		scan1_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic1_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
@@ -952,6 +1000,31 @@ public:
 		msg.header.stamp = this->get_clock()->now();
 		msg.header.frame_id = "map";
 
+		// Occupancy Grid의 메타데이터
+		float resolution = msg.info.resolution;
+		auto origin = msg.info.origin;
+		int width = msg.info.width;
+		int height = msg.info.height;
+
+		// 정사각형 블록을 회전시켜 그리드에 추가
+		for (size_t i = 0;i < clicked_points_.size();i++)
+		{
+			// 월드 좌표계를 그리드 좌표계로 변환
+			int grid_x = (clicked_points_[i].point.x - origin.position.x) / resolution;
+			int grid_y = (clicked_points_[i].point.y - origin.position.y) / resolution;
+
+			// Occupancy Grid 좌표에 추가
+			int cell_x = grid_x;
+			int cell_y = grid_y;
+
+			// 그리드 내에서 유효한 좌표인지 확인
+			if (cell_x >= 0 && cell_x < width && cell_y >= 0 && cell_y < height)
+			{
+				// 점유율을 100(점유된 공간)으로 설정
+				msg.data[cell_y * width + cell_x] = 100;
+			}
+		}
+
 		// Publish the map
 		map_pub_->publish(msg);
 	}
@@ -1014,7 +1087,7 @@ public:
 			}
 		}
 
-		pub_map(modified_grid);
+		// pub_map(modified_grid);
 
 		// 수정된 Occupancy Grid 반환
 		return modified_grid;
@@ -1121,8 +1194,28 @@ public:
 
 	}
 
+	void clickedPointCallback(const geometry_msgs::msg::PointStamped::SharedPtr msg)
+	{
+		clicked_points_.push_back(*msg);
+	}
 
-	
+	void clear_obstacles(const visualization_msgs::msg::InteractiveMarkerFeedback::ConstSharedPtr &feedback)
+	{
+		RCLCPP_INFO(this->get_logger(), "Feedback event type: %d", feedback->event_type);
+
+        bool clear_obs_clicked = false;
+
+        if (feedback->event_type == visualization_msgs::msg::InteractiveMarkerFeedback::BUTTON_CLICK)
+		{
+            clear_obs_clicked = true;
+        }
+        if (clear_obs_clicked)
+		{
+            RCLCPP_INFO(this->get_logger(), "Clearing obstacles.");
+            clicked_points_.clear();
+            clear_obs_clicked = false;
+        }
+	}
 };
 
 int main(int argc, char *argv[])
