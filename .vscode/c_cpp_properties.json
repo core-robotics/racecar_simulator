@@ -4,7 +4,7 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
-                "/opt/ros/humble/include/**",
+                "/opt/ros/foxy/include/**",
                 "/home/a/racecar_simulator/src/racecar_simulator/include/**"
 
             ],

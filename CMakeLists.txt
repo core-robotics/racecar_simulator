@@ -18,6 +18,8 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(f1_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
+find_package(interactive_markers REQUIRED)
 
 # Include directories
 include_directories(include)
@@ -46,6 +48,8 @@ ament_target_dependencies(simulator
   nav_msgs
   sensor_msgs
   yaml-cpp
+  visualization_msgs
+  interactive_markers
 )
 
 ament_target_dependencies(param_loader

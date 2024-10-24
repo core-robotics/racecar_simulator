@@ -7,7 +7,7 @@ racecar_simulator:
     scan_field_of_view: 4.71238898      # rad    270 degrees
     scan_std_dev: 0.0                  # m      standard deviation of the scan noise
     map_free_threshold: 0.2             # m
-    detect_car_mode: false               # detect other cars
+    detect_car_mode: true               # detect other cars
     state_noise_mode: false              # add noise to the state
     scan_noise_mode: false               # add noise to the scan
 
@@ -17,7 +17,7 @@ racecar_simulator:
     # yaml_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/c_track.yaml"
 
     # car1
-    vehicle_model0: 0                   # 0: single track model, 1: pacejka tire model
+    vehicle_model0: 1                   # 0: single track model, 1: pacejka tire model
     drive_topic0: "mpc_cmd"      # car1 control topic
     state_topic0: "state0"              # car1 state topic
     mass0: 3.5                          # kg
@@ -39,7 +39,7 @@ racecar_simulator:
 
     # car2
     vehicle_model1: 1                   # 0: single track model, 1: pacejka tire model
-    drive_topic1: "ackermann_cmd1"      # car2 control topic
+    drive_topic1: "mpc_cmd1"      # car2 control topic
     state_topic1: "state1"              # car2 state topic
     mass1: 3.5                          # kg
     l_f1: 0.17145                       # m
