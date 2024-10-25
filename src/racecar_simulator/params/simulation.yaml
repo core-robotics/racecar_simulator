@@ -11,8 +11,8 @@ racecar_simulator:
     state_noise_mode: false              # add noise to the state
     scan_noise_mode: false               # add noise to the scan
 
-    pgm_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/map7.pgm"
-    yaml_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/map7.yaml"
+    pgm_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/map_E.pgm"
+    yaml_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/map_E.yaml"
     # pgm_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/c_track.pgm"
     # yaml_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/c_track.yaml"
 
