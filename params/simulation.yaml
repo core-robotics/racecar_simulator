@@ -11,10 +11,8 @@ racecar_simulator:
     state_noise_mode: false              # add noise to the state
     scan_noise_mode: false               # add noise to the scan
 
-    pgm_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/map_iros.pgm"
-    yaml_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/map_iros.yaml"
-    # pgm_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/c_track.pgm"
-    # yaml_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/c_track.yaml"
+    pgm_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/map7.pgm"
+    yaml_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/map7.yaml"
 
     # car1
     vehicle_model0: 1                   # 0: single track model, 1: pacejka tire model
