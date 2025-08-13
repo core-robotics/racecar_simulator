@@ -71,10 +71,10 @@ def generate_launch_description():
         # parameters=[{"use_sim_time": True}],
     )
 
-    ld.add_action(rviz_node)
-    ld.add_action(racecar_node)
     ld.add_action(robot0_state_publisher_node)
     ld.add_action(robot1_state_publisher_node)
+    ld.add_action(racecar_node)
+    ld.add_action(rviz_node)
     
 
     return ld
