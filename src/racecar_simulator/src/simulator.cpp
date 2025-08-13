@@ -16,17 +16,10 @@
 #include "control_msgs/msg/car_state.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
 #include "nav_msgs/msg/odometry.hpp"
-#include "sensor_msgs/msg/laser_scan.hpp"
-#include "sensor_msgs/msg/imu.hpp"
 #include "std_msgs/msg/bool.hpp"
-#include "racecar_simulator/scan_simulator_2d.hpp"
 
 
 using namespace std::chrono_literals; // Use chrono literals for timing
-using namespace racecar_simulator;
-
-
-
 class RacecarSimulator : public rclcpp::Node
 {
 private:
@@ -39,9 +32,6 @@ private:
 	rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive0_sub_;
 	rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive1_sub_;
 	rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
-	
-	rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan0_pub_;
-	rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan1_pub_;
 	rclcpp::Publisher<control_msgs::msg::CarState>::SharedPtr state0_pub_;
 	rclcpp::Publisher<control_msgs::msg::CarState>::SharedPtr state1_pub_;
 	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub_;
@@ -49,13 +39,12 @@ private:
 	rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr collision1_pub_;
 	rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom0_pub_;
 	rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom1_pub_;
-	rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu0_pub_;
-	rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu1_pub_;
+
 
 
 	control_msgs::msg::CarState car_state0_, car_state1_;
 
-	ScanSimulator2D scan_simulator_;
+
 	double map_free_threshold;
 
 	struct CarParams
@@ -71,17 +60,13 @@ private:
 	std::string drive_topic0_, state_topic0_, drive_topic1_, state_topic1_, scan_topic0_, scan_topic1_;
 	std::string pgm_file_path_, yaml_file_path_;
 	double simulator_frequency_, pub_frequency_;
-	bool detect_car_mode_ = false;
 	bool state_noise_mode_ = false;
-	bool scan_noise_mode_ = false;
+
 
 	double desired_speed0_, desired_accel0_, desired_steer_ang0_;
 	double desired_speed1_, desired_accel1_, desired_steer_ang1_;
-	double scan_fov_, scan_std_dev_;
-	int scan_beams_;
+
 	double map_free_threshold_;
-	std::vector<float> scan_data_float0_, scan_data_float1_;
-	sensor_msgs::msg::LaserScan scan_msg_data0_, scan_msg_data1_;
 
 
 	bool map_exists_ = false;
@@ -105,27 +90,17 @@ public:
 		// Params params = load_parameters(this);
 		// General parameters
 		this->declare_parameter("simulator_frequency", 1000.0);
-		this->declare_parameter("pub_frequency", 40.0);
-		this->declare_parameter("scan_beams", 1080);
-		this->declare_parameter("scan_field_of_view", 2.0 * M_PI);
-		this->declare_parameter("scan_std_dev", 0.01);
+		this->declare_parameter("pub_frequency", 100.0);
 		this->declare_parameter("map_free_threshold", 0.2);
-		this->declare_parameter("detect_car_mode", false);
 		this->declare_parameter("state_noise_mode", false);
-		this->declare_parameter("scan_noise_mode", false);
 		this->declare_parameter<std::string>("pgm_file_path", "/home/a/racecar_simulator/src/racecar_simulator/maps/map7.pgm");
 		this->declare_parameter<std::string>("yaml_file_path", "/home/a/racecar_simulator/src/racecar_simulator/maps/map7.yaml");
 
 
 		this->get_parameter("simulator_frequency", simulator_frequency_);
 		this->get_parameter("pub_frequency", pub_frequency_);
-		this->get_parameter("scan_beams", scan_beams_);
-		this->get_parameter("scan_field_of_view", scan_fov_);
-		this->get_parameter("scan_std_dev", scan_std_dev_);
 		this->get_parameter("map_free_threshold", map_free_threshold_);
-		this->get_parameter("detect_car_mode", detect_car_mode_);
 		this->get_parameter("state_noise_mode", state_noise_mode_);
-		this->get_parameter("scan_noise_mode", scan_noise_mode_);
 		this->get_parameter("pgm_file_path", pgm_file_path_);
 		this->get_parameter("yaml_file_path", yaml_file_path_);
 
@@ -215,11 +190,14 @@ public:
 		this->get_parameter("decel_max1", car1_params_.decel_max);
 		this->get_parameter("jerk_max1", car1_params_.jerk_max);
 
-		// Convert frequencies to durations
-		auto simulator_period = std::chrono::duration<double>(1.0 / simulator_frequency_);
-		auto pub_period = std::chrono::duration<double>(1.0 / pub_frequency_);
 
-		// Create publishers and subscribers
+		auto qos_reliable_1 = rclcpp::QoS(rclcpp::KeepLast(1))
+								.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE)
+								.durability(RMW_QOS_POLICY_DURABILITY_VOLATILE);
+
+		auto simulator_period = std::chrono::duration<double>(1.0 / simulator_frequency_);
+		auto pub_period       = std::chrono::duration<double>(1.0 / pub_frequency_);
+
 		tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
 		simulator_timer_ = this->create_wall_timer(
@@ -230,37 +208,37 @@ public:
 			std::chrono::duration_cast<std::chrono::milliseconds>(pub_period),
 			std::bind(&RacecarSimulator::pubLoop, this));
 
+
 		init_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
-			"initialpose", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort(), std::bind(&RacecarSimulator::car0RvizCallback, this, std::placeholders::_1));
+			"initialpose", qos_reliable_1,
+			std::bind(&RacecarSimulator::car0RvizCallback, this, std::placeholders::_1));
 
 		goal_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-			"goal_pose", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort(), std::bind(&RacecarSimulator::car1RvizCallback, this, std::placeholders::_1));
+			"goal_pose", qos_reliable_1,
+			std::bind(&RacecarSimulator::car1RvizCallback, this, std::placeholders::_1));
 
 		drive0_sub_ = this->create_subscription<ackermann_msgs::msg::AckermannDriveStamped>(
-			drive_topic0_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort(), std::bind(&RacecarSimulator::drive0Callback, this, std::placeholders::_1));
+			drive_topic0_, qos_reliable_1,
+			std::bind(&RacecarSimulator::drive0Callback, this, std::placeholders::_1));
 
 		drive1_sub_ = this->create_subscription<ackermann_msgs::msg::AckermannDriveStamped>(
-			drive_topic1_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort(), std::bind(&RacecarSimulator::drive1Callback, this, std::placeholders::_1));
-
-		map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
-			"map", rclcpp::QoS(rclcpp::KeepLast(1)).reliable(), std::bind(&RacecarSimulator::mapCallback, this, std::placeholders::_1));
-
-		scan0_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic0_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
-		scan1_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic1_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
-		state0_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic0_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
-		state1_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic1_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
-		map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("map", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local());
-		collision0_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision0", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
-		collision1_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision1", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
-		odom0_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom0", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
-		odom1_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom1", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
-		imu0_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("imu0", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
-		imu1_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("imu1", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
+			drive_topic1_, qos_reliable_1,
+			std::bind(&RacecarSimulator::drive1Callback, this, std::placeholders::_1));
 
 
-		scan_simulator_ = ScanSimulator2D(scan_beams_, scan_fov_, scan_std_dev_);
+		state0_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic0_, qos_reliable_1);
+		state1_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic1_, qos_reliable_1);
+
+		map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("map", qos_reliable_1);
+
+		collision0_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision0", qos_reliable_1);
+		collision1_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision1", qos_reliable_1);
+
+		odom0_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom0", qos_reliable_1);
+		odom1_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom1", qos_reliable_1);
+
 		original_map_ = read_map_files(pgm_file_path_, yaml_file_path_);
-		current_map_ = original_map_;
+		current_map_  = original_map_;
 
 
 		// Initialize simulator
@@ -270,16 +248,17 @@ public:
 		RCLCPP_INFO(this->get_logger(), "vehicle_model0: %d", vehicle_model0_);
 		RCLCPP_INFO(this->get_logger(), "vehicle_model1: %d", vehicle_model1_);
 
-		// c track
-		// car_state0_.px = 0.9655838012695312;
-		// car_state0_.py = -0.35892820358276367;
-		// porto
-		// car_state0_.px = -1.9128150939941406;
-		// car_state0_.py = -0.74951171875;
 		//levinelobby
-		car_state0_.px = 0.688;
-		car_state0_.py = -0.906;
-		car_state0_.yaw = -70 * M_PI / 180;
+		car_state0_.px = 3;
+		car_state0_.py = 0.3;
+		car_state0_.yaw = -0.97;
+
+		car_state1_.px = 3.7;
+		car_state1_.py = 1.0;
+		car_state1_.yaw = -0.99;
+
+		desired_accel0_ = desired_accel1_ = 0.0;
+		desired_steer_ang0_ = desired_steer_ang1_ = 0.0;
 	}
 
 	// Simulator loop for updating car states
@@ -297,22 +276,13 @@ public:
 	void pubLoop()
 	{
 		current_map_ = original_map_;
-		if(detect_car_mode_)
-		{
-			current_map_ = mark_vehicle_on_grid(current_map_, car_state0_);
-			current_map_ = mark_vehicle_on_grid(current_map_, car_state1_);
-		}
 		
-		pub_scan(car_state0_, "laser_model0", scan_data_float0_, scan0_pub_,scan_msg_data0_);
-		pub_scan(car_state1_, "laser_model1", scan_data_float1_, scan1_pub_,scan_msg_data1_);
 		state0Publisher();
 		state1Publisher();
-		pub_colision(scan_msg_data0_, collision0_pub_);
-		pub_colision(scan_msg_data1_, collision1_pub_);
-		pub_odom(car_state0_, "base_link0", "odom0", odom0_pub_);
-		pub_odom(car_state1_, "base_link1", "odom1", odom1_pub_);
-		pub_imu(car_state0_, "base_link0", imu0_pub_);
-		pub_imu(car_state1_, "base_link1", imu1_pub_);
+		pub_colision(collision0_pub_);
+		pub_colision(collision1_pub_);
+		pub_odom(car_state0_, "map", "base_link0", odom0_pub_);
+		pub_odom(car_state1_, "map", "base_link1", odom1_pub_);
 
 		pub_map(current_map_);
 	}
@@ -332,8 +302,8 @@ public:
 		t.transform.translation.z = 0.0;
 
 		tf2::Quaternion q;
-		q.normalize();
 		q.setRPY(0, 0, yaw);
+		// q.normalize();
 		t.transform.rotation.x = q.x();
 		t.transform.rotation.y = q.y();
 		t.transform.rotation.z = q.z();
@@ -347,8 +317,12 @@ public:
 			return;
 		}
 
+
+
 		// Send the transformation
 		tf_broadcaster_->sendTransform(t);
+
+
 	}
 
 	void setTF()
@@ -365,32 +339,8 @@ public:
 
 	void updateState()
 	{
-		if(vehicle_model0_ == 0)
-		{
-			car_state0_ = updateStateSingleTrack(car_state0_, car0_params_);
-		}
-		else if(vehicle_model0_ == 1)
-		{
-			car_state0_ = updateStatePacejka(car_state0_, car0_params_);
-		}
-		else
-		{
-			std::cout<<"Invalid vehicle model for car0"<<std::endl;
-		}
-
-		if(vehicle_model1_ == 0)
-		{
-			car_state1_ = updateStateSingleTrack(car_state1_, car1_params_);
-		}
-		else if(vehicle_model1_ == 1)
-		{
-			car_state1_ = updateStatePacejka(car_state1_, car1_params_);
-		}
-		else
-		{
-			std::cout<<"Invalid vehicle model for car1"<<std::endl;
-		}
-
+		car_state0_ = updateStatePacejka(car_state0_, car0_params_);
+		car_state1_ = updateStatePacejka(car_state1_, car1_params_);
 	}
 
 	// Callback for initial pose of car0
@@ -561,92 +511,6 @@ public:
 
 		return end;
 	}
-	control_msgs::msg::CarState updateStateSingleTrack(control_msgs::msg::CarState &start, CarParams p)
-	{
-		if (abs(start.v) <0.1)
-		{
-			return update_k(start, start.accel, start.steer_vel, p, 1.0 / simulator_frequency_);
-		}
-		double g = 9.81;
-		double h_cg = 0.074;
-		double friction_coeff = 0.8;
-		double cs_f = 4.718;
-		double cs_r = 5.74562;
-		double dt = 1.0 / simulator_frequency_;
-
-		double x_dot = start.v * cos(start.yaw + start.slip_angle);
-		double y_dot = start.v * sin(start.yaw + start.slip_angle);
-		double v_dot = start.accel;
-		// double steer_angle_dot = start.steer_vel;
-		// double theta_dot = start.omega;123
-
-		double rear_val=g*p.l_r-start.accel*h_cg;
-		double front_val=g*p.l_f+start.accel*h_cg;
-
-		// double vel_ratio, first_term;
-
-		// vel_ratio = start.omega / start.v;
-		// first_term = friction_coeff / (start.v * (p.l_f + p.l_r));
-
-		double omega_dot=
-		  (friction_coeff * p.mass / (p.I_z * (p.l_f+p.l_r))) *
-                      (p.l_f * cs_f * start.steer * (rear_val) + start.slip_angle * (p.l_r * cs_r * (front_val)-p.l_f * cs_f * (rear_val)) -
-                       (start.omega / start.v) * (pow(p.l_f, 2) * cs_f * (rear_val) + pow(p.l_r, 2) * cs_r * (front_val))); 
-
-		double slip_angle_dot=
-		(friction_coeff / (start.v * (p.l_r + p.l_f))) *
-                          (cs_f * start.steer * rear_val - start.slip_angle * (cs_r * front_val + cs_f * rear_val) +
-                           (start.omega / start.v) * (cs_r * p.l_r * front_val - cs_f * p.l_f * rear_val)) -
-                      start.omega; 
-
-
-		control_msgs::msg::CarState end;
-		end.px = start.px + x_dot * dt;
-		end.py = start.py + y_dot * dt;
-		end.yaw = start.yaw + start.omega * dt;
-		end.slip_angle = start.slip_angle + slip_angle_dot * dt;
-
-		end.v = start.v + v_dot * dt;
-		end.vx = start.v * cos(start.slip_angle);
-		end.vy = start.v * sin(start.slip_angle);
-		end.omega = start.omega + omega_dot * dt;
-
-		end.a = start.accel;
-		end.ax = start.a * cos(start.slip_angle) - start.v * start.omega * sin(start.slip_angle);
-		end.ay = start.a * sin(start.slip_angle) + start.v * start.omega * cos(start.slip_angle);
-
-		end.accel = start.accel;
-		end.steer = start.steer;
-
-		if (end.v > p.speed_max)
-		{
-			end.v = p.speed_max;
-		}
-		else if (end.v < -p.speed_max)
-		{
-			end.v = -p.speed_max;
-		}
-
-		if (end.yaw > M_PI)
-		{
-			end.yaw -= 2 * M_PI;
-		}
-		else if (end.yaw < -M_PI)
-		{
-			end.yaw += 2 * M_PI;
-		}
-
-		while (end.slip_angle > M_PI)
-		{
-			end.slip_angle -= 2 * M_PI;
-		}
-		while (end.slip_angle < -M_PI)
-		{
-			end.slip_angle += 2 * M_PI;
-		}
-
-		return end;
-	}
 
 	// Update car state
 	control_msgs::msg::CarState updateStatePacejka(control_msgs::msg::CarState &start, CarParams car_params)
@@ -713,141 +577,10 @@ public:
 		{
 			end.slip_angle += 2 * M_PI;
 		}
-
-		if (state_noise_mode_)
-		{
-			end.px += gen_noise(0.0001);
-			end.py += gen_noise(0.0001);
-			end.yaw += gen_noise(0.0001);
-			end.v += gen_noise(0.0001);
-			end.vx += gen_noise(0.0001);
-			end.vy += gen_noise(0.0001);
-			end.omega += gen_noise(0.0001);
-			end.a += gen_noise(0.0001);
-			end.ax += gen_noise(0.0001);
-			end.ay += gen_noise(0.0001);
-			end.accel += gen_noise(0.0001);
-			end.steer += gen_noise(0.0001);
-			end.slip_angle += gen_noise(0.01);
-		}
-
 		return end;
 	}
 
-	// Callback for map
-	void mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg)
-	{
-		// Get map parameters
-		size_t height = msg->info.height;
-		size_t width = msg->info.width;
-		double resolution = msg->info.resolution;
 
-		// Convert ROS origin to Pose2D
-		Pose2D origin;
-		origin.x = msg->info.origin.position.x;
-		origin.y = msg->info.origin.position.y;
-
-		// Convert quaternion to Yaw angle
-		tf2::Quaternion quat(msg->info.origin.orientation.x,
-							 msg->info.origin.orientation.y,
-							 msg->info.origin.orientation.z,
-							 msg->info.origin.orientation.w);
-		tf2::Matrix3x3 mat(quat);
-		double roll, pitch, yaw;
-		mat.getRPY(roll, pitch, yaw);
-		origin.theta = yaw;
-
-		// Check data size
-		if (msg->data.size() != height * width)
-		{
-			RCLCPP_ERROR(this->get_logger(), "Data size mismatch: expected %zu but got %zu", height * width, msg->data.size());
-			return;
-		}
-
-		// Convert map to probability values
-		std::vector<double> map(msg->data.size(), 0.5); // Initialize with default value of 0.5
-		for (size_t i = 0; i < msg->data.size(); i++)
-		{
-			if (msg->data[i] > 100 || msg->data[i] < 0)
-			{
-				map[i] = 0.5; // Set as unknown area
-			}
-			else
-			{
-				map[i] = msg->data[i] / 100.0; // Convert values from 0-100 to probabilities
-			}
-		}
-
-		// Pass the map to the scanner
-		scan_simulator_.set_map(map, height, width, resolution, origin, map_free_threshold_);
-
-		map_exists_ = true;
-	}
-
-	// Publish scan data
-	void pub_scan(const control_msgs::msg::CarState &state,
-				  const std::string &scan_frame,
-				  std::vector<float> &scan_data_float,
-				  rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan_pub,
-				  sensor_msgs::msg::LaserScan &scan_msg_data)
-	{
-		if (!map_exists_)
-		{
-			return;
-		}
-
-		// Get scan data
-		Pose2D scan_pose;
-		double scan_distance_to_base_link = 0.12;
-
-		if (scan_noise_mode_)
-		{
-			scan_pose.x = state.px + scan_distance_to_base_link * cos(state.yaw) + gen_noise(0.001);
-			scan_pose.y = state.py + scan_distance_to_base_link * sin(state.yaw) + gen_noise(0.001);
-			scan_pose.theta = state.yaw + gen_noise(0.01);
-		}
-		else
-		{
-			scan_pose.x = state.px + scan_distance_to_base_link * cos(state.yaw);
-			scan_pose.y = state.py + scan_distance_to_base_link * sin(state.yaw);
-			scan_pose.theta = state.yaw;
-		}
-
-		std::vector<double> scan_data = scan_simulator_.scan(scan_pose);
-
-		// convert to float
-		scan_data_float.resize(scan_data.size());
-
-		for (size_t i = 0; i < scan_data.size(); i++)
-		{
-			scan_data_float[i] = scan_data[i];
-		}
-		sensor_msgs::msg::LaserScan scan_msg;
-		scan_msg.header.stamp = this->get_clock()->now();
-		scan_msg.header.frame_id = scan_frame;
-		scan_msg.angle_min = -scan_simulator_.get_field_of_view() / 2;
-		scan_msg.angle_max = scan_simulator_.get_field_of_view() / 2;
-		scan_msg.angle_increment = scan_simulator_.get_angle_increment();
-		scan_msg.range_max = 10.0;
-		scan_msg.range_min = 0.1;
-		scan_msg.ranges = scan_data_float;
-		scan_msg.intensities = std::vector<float>(scan_data.size(), 0.0);
-		scan_msg.time_increment = 0.0;
-		scan_msg.scan_time = 1.0 / pub_frequency_;
-
-		scan_msg_data=scan_msg;
-		scan_pub->publish(scan_msg);
-	}
-
-	double gen_noise(double std_dev)
-	{
-		double value = 0.0;
-		std::random_device rd;
-		std::mt19937 gen(rd());
-		std::normal_distribution<double> dist(0.0, std_dev);
-		value += dist(gen);
-		return value;
-	}
 
 	// Function to read the PGM file
 	nav_msgs::msg::OccupancyGrid read_map_files(const std::string &pgm_file_path,
@@ -956,95 +689,17 @@ public:
 		map_pub_->publish(msg);
 	}
 
-	nav_msgs::msg::OccupancyGrid mark_vehicle_on_grid(
-		const nav_msgs::msg::OccupancyGrid &grid,
-		control_msgs::msg::CarState &state)
-	{
-		// 복사본을 생성 (원본 데이터를 손상시키지 않기 위해)
-		nav_msgs::msg::OccupancyGrid modified_grid = grid;
-
-		// Occupancy Grid의 메타데이터
-		float resolution = grid.info.resolution;
-		auto origin = grid.info.origin;
-		int width = grid.info.width;
-		int height = grid.info.height;
-
-		double block_size = 0.2; // meters
-
-		// 월드 좌표계를 그리드 좌표계로 변환
-		int grid_x = (state.px - origin.position.x - 0.2 * cos(state.yaw)) / resolution;
-		int grid_y = (state.py - origin.position.y - 0.2 * sin(state.yaw)) / resolution;
-		int grid_block_size = block_size / resolution;
-
-		// 회전 행렬을 계산
-		float cos_yaw = cos(state.yaw);
-		float sin_yaw = sin(state.yaw);
-
-		// 가변 크기 정사각형 블록의 기본 좌표들 (사각형의 중심을 기준으로)
-		std::vector<std::pair<int, int>> block_cells;
-		int half_block_size = grid_block_size / 2; // 정사각형의 반쪽 크기
-
-		for (int i = -half_block_size; i < half_block_size; ++i)
-		{
-			for (int j = -half_block_size; j < half_block_size; ++j)
-			{
-				block_cells.emplace_back(i, j);
-			}
-		}
-
-		// 정사각형 블록을 회전시켜 그리드에 추가
-		for (const auto &cell : block_cells)
-		{
-			int local_x = cell.first;
-			int local_y = cell.second;
-
-			// 회전 변환 적용
-			int rotated_x = round(cos_yaw * local_x - sin_yaw * local_y);
-			int rotated_y = round(sin_yaw * local_x + cos_yaw * local_y);
-
-			// Occupancy Grid 좌표에 추가
-			int cell_x = grid_x + rotated_x;
-			int cell_y = grid_y + rotated_y;
-
-			// 그리드 내에서 유효한 좌표인지 확인
-			if (cell_x >= 0 && cell_x < width && cell_y >= 0 && cell_y < height)
-			{
-				// 점유율을 100(점유된 공간)으로 설정
-				modified_grid.data[cell_y * width + cell_x] = 100;
-			}
-		}
-
-		pub_map(modified_grid);
-
-		// 수정된 Occupancy Grid 반환
-		return modified_grid;
-	}
-
-	 bool check_colision(const sensor_msgs::msg::LaserScan& scan_data)
+	 bool check_colision()
     {
-        scan_coordinates.clear();
-        for (size_t i = 0; i < scan_data.ranges.size(); i++)
-        {
-            float angle = scan_data.angle_min + i * scan_data.angle_increment;
-            float x = scan_data.ranges[i] * cos(angle);
-            float y = scan_data.ranges[i] * sin(angle);
-            
-            
-            if (x > x_min && x < x_max && y > y_min && y < y_max)
-            {
-                return true;
-            }
-        }
         return false;
     }
 
 
 	void pub_colision(
-		const sensor_msgs::msg::LaserScan& scan_data,
 		rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr collision_pub)
 	{
 		std_msgs::msg::Bool collision_msg;
-		collision_msg.data = check_colision(scan_data);
+		collision_msg.data = check_colision();
 		collision_pub->publish(collision_msg);
 	}
 
@@ -1056,7 +711,6 @@ public:
 	{
 		nav_msgs::msg::Odometry odom_msg;
 		odom_msg.header.stamp = this->get_clock()->now();
-		// odom_msg.header.frame_id = "odom";
 		odom_msg.header.frame_id = frame_id;
 		odom_msg.child_frame_id = child_frame_id;
 		odom_msg.pose.pose.position.x = state.px;
@@ -1075,53 +729,6 @@ public:
 		odom_msg.twist.twist.angular.z = state.omega;
 		odom_pub->publish(odom_msg);
 	}
-
-	void pub_imu(
-		const control_msgs::msg::CarState &state,
-		const std::string &frame_id,
-		rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub)
-	{
-		sensor_msgs::msg::Imu imu_msg;
-		imu_msg.header.stamp = this->get_clock()->now();
-		imu_msg.header.frame_id = frame_id;
-
-		tf2::Quaternion q;
-		q.setRPY(0, 0, state.yaw);
-		imu_msg.orientation = tf2::toMsg(q);
-		imu_msg.orientation_covariance = { -1, 0, 0,
-										  0, 0, 0,
-										  0, 0, 0 };
-
-		imu_msg.angular_velocity.x = 0.0;
-		imu_msg.angular_velocity.y = 0.0;
-		imu_msg.angular_velocity.z = state.omega;
-		imu_msg.angular_velocity_covariance = { -1, 0, 0,
-												0, 0, 0,
-												0, 0, 0 };
-
-		imu_msg.linear_acceleration.x = state.ax;
-		imu_msg.linear_acceleration.y = state.ay;
-		imu_msg.linear_acceleration.z = 0.0;
-		imu_msg.linear_acceleration_covariance = { -1, 0, 0,
-													0, 0, 0,
-													0, 0, 0 };
-		if(scan_noise_mode_)
-		{
-			imu_msg.orientation.x += gen_noise(0.01);
-			imu_msg.orientation.y += gen_noise(0.01);
-			imu_msg.orientation.z += gen_noise(0.01);
-			imu_msg.angular_velocity.x += gen_noise(0.01);
-			imu_msg.angular_velocity.y += gen_noise(0.01);
-			imu_msg.angular_velocity.z += gen_noise(0.01);
-			imu_msg.linear_acceleration.x += gen_noise(0.01);
-			imu_msg.linear_acceleration.y += gen_noise(0.01);
-			imu_msg.linear_acceleration.z += gen_noise(0.01);
-		}
-		imu_pub->publish(imu_msg);
-
-	}
-
-
 	
 };
 

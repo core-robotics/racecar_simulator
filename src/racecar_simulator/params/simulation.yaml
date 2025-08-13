@@ -17,7 +17,7 @@ racecar_simulator:
     # yaml_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/c_track.yaml"
 
     # car1
-    vehicle_model0: 0                   # 0: single track model, 1: pacejka tire model
+    vehicle_model0: 1                   # 0: single track model, 1: pacejka tire model
     drive_topic0: "ackermann_cmd0"      # car1 control topic
     state_topic0: "state0"              # car1 state topic
     mass0: 3.5                          # kg
