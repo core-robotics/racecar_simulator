@@ -15,11 +15,11 @@
 #include "ackermann_msgs/msg/ackermann_drive_stamped.hpp"
 #include "control_msgs/msg/car_state.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
+#include "nav_msgs/msg/path.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "std_msgs/msg/bool.hpp"
 
-
-using namespace std::chrono_literals; // Use chrono literals for timing
+using namespace std::chrono_literals;
 class RacecarSimulator : public rclcpp::Node
 {
 private:
@@ -35,15 +35,13 @@ private:
 	rclcpp::Publisher<control_msgs::msg::CarState>::SharedPtr state0_pub_;
 	rclcpp::Publisher<control_msgs::msg::CarState>::SharedPtr state1_pub_;
 	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub_;
+	rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr center_path_pub_;
 	rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr collision0_pub_;
 	rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr collision1_pub_;
 	rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom0_pub_;
 	rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom1_pub_;
 
-
-
 	control_msgs::msg::CarState car_state0_, car_state1_;
-
 
 	double map_free_threshold;
 
@@ -58,29 +56,28 @@ private:
 
 	int vehicle_model0_, vehicle_model1_;
 	std::string drive_topic0_, state_topic0_, drive_topic1_, state_topic1_, scan_topic0_, scan_topic1_;
-	std::string pgm_file_path_, yaml_file_path_;
+	std::string pgm_file_path_, yaml_file_path_, csv_file_path_;
 	double simulator_frequency_, pub_frequency_;
 	bool state_noise_mode_ = false;
-
 
 	double desired_speed0_, desired_accel0_, desired_steer_ang0_;
 	double desired_speed1_, desired_accel1_, desired_steer_ang1_;
 
 	double map_free_threshold_;
 
-
 	bool map_exists_ = false;
 	nav_msgs::msg::OccupancyGrid original_map_;
 	nav_msgs::msg::OccupancyGrid current_map_;
+	nav_msgs::msg::Path center_path_;
 
 	bool car0_collision_ = false;
 	bool car1_collision_ = false;
 
 	std::vector<std::pair<float, float>> scan_coordinates;
 	float x_min = -0.3105;
-    float x_max = 0.0705;
-    float y_min = -0.1397;
-    float y_max = 0.1397;
+	float x_max = 0.0705;
+	float y_min = -0.1397;
+	float y_max = 0.1397;
 
 public:
 	RacecarSimulator()
@@ -95,7 +92,7 @@ public:
 		this->declare_parameter("state_noise_mode", false);
 		this->declare_parameter<std::string>("pgm_file_path", "/home/a/racecar_simulator/src/racecar_simulator/maps/map7.pgm");
 		this->declare_parameter<std::string>("yaml_file_path", "/home/a/racecar_simulator/src/racecar_simulator/maps/map7.yaml");
-
+		this->declare_parameter<std::string>("center_path", "/home/a/racecar_simulator/src/racecar_simulator/maps/levinelobby_path.csv");
 
 		this->get_parameter("simulator_frequency", simulator_frequency_);
 		this->get_parameter("pub_frequency", pub_frequency_);
@@ -103,9 +100,10 @@ public:
 		this->get_parameter("state_noise_mode", state_noise_mode_);
 		this->get_parameter("pgm_file_path", pgm_file_path_);
 		this->get_parameter("yaml_file_path", yaml_file_path_);
+		this->get_parameter("center_path", csv_file_path_);
 
 		// Car0 parameters
-		this->declare_parameter("vehicle_model0",1);
+		this->declare_parameter("vehicle_model0", 1);
 		this->declare_parameter("drive_topic0", "ackermann_cmd0");
 		this->declare_parameter("state_topic0", "state0");
 		this->declare_parameter("scan_topic0", "scan0");
@@ -148,7 +146,7 @@ public:
 		this->get_parameter("jerk_max0", car0_params_.jerk_max);
 
 		// Car1 parameters
-		this->declare_parameter("vehicle_model1",1);
+		this->declare_parameter("vehicle_model1", 1);
 		this->declare_parameter("drive_topic1", "ackermann_cmd1");
 		this->declare_parameter("state_topic1", "state1");
 		this->declare_parameter("scan_topic1", "scan1");
@@ -190,13 +188,12 @@ public:
 		this->get_parameter("decel_max1", car1_params_.decel_max);
 		this->get_parameter("jerk_max1", car1_params_.jerk_max);
 
-
 		auto qos_reliable_1 = rclcpp::QoS(rclcpp::KeepLast(1))
-								.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE)
-								.durability(RMW_QOS_POLICY_DURABILITY_VOLATILE);
+								  .reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE)
+								  .durability(RMW_QOS_POLICY_DURABILITY_VOLATILE);
 
 		auto simulator_period = std::chrono::duration<double>(1.0 / simulator_frequency_);
-		auto pub_period       = std::chrono::duration<double>(1.0 / pub_frequency_);
+		auto pub_period = std::chrono::duration<double>(1.0 / pub_frequency_);
 
 		tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
@@ -207,7 +204,6 @@ public:
 		pub_timer_ = this->create_wall_timer(
 			std::chrono::duration_cast<std::chrono::milliseconds>(pub_period),
 			std::bind(&RacecarSimulator::pubLoop, this));
-
 
 		init_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
 			"initialpose", qos_reliable_1,
@@ -225,11 +221,11 @@ public:
 			drive_topic1_, qos_reliable_1,
 			std::bind(&RacecarSimulator::drive1Callback, this, std::placeholders::_1));
 
-
 		state0_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic0_, qos_reliable_1);
 		state1_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic1_, qos_reliable_1);
 
 		map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("map", qos_reliable_1);
+		center_path_pub_ = this->create_publisher<nav_msgs::msg::Path>("center_path", qos_reliable_1);
 
 		collision0_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision0", qos_reliable_1);
 		collision1_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision1", qos_reliable_1);
@@ -238,9 +234,9 @@ public:
 		odom1_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom1", qos_reliable_1);
 
 		original_map_ = read_map_files(pgm_file_path_, yaml_file_path_);
-		current_map_  = original_map_;
+		current_map_ = original_map_;
 
-
+		center_path_ = createCenterPathFromCsv(csv_file_path_);
 		// Initialize simulator
 		RCLCPP_INFO(this->get_logger(), "Racecar simulator initialized");
 		RCLCPP_INFO(this->get_logger(), "Simulator frequency: %f Hz", simulator_frequency_);
@@ -248,7 +244,7 @@ public:
 		RCLCPP_INFO(this->get_logger(), "vehicle_model0: %d", vehicle_model0_);
 		RCLCPP_INFO(this->get_logger(), "vehicle_model1: %d", vehicle_model1_);
 
-		//levinelobby
+		// levinelobby
 		car_state0_.px = 3;
 		car_state0_.py = 0.3;
 		car_state0_.yaw = -0.97;
@@ -276,15 +272,14 @@ public:
 	void pubLoop()
 	{
 		current_map_ = original_map_;
-		
+
 		state0Publisher();
 		state1Publisher();
-		pub_colision(collision0_pub_);
-		pub_colision(collision1_pub_);
 		pub_odom(car_state0_, "map", "base_link0", odom0_pub_);
 		pub_odom(car_state1_, "map", "base_link1", odom1_pub_);
 
 		pub_map(current_map_);
+		pub_center_path(center_path_);
 	}
 
 	// Publish transform between frames
@@ -317,12 +312,8 @@ public:
 			return;
 		}
 
-
-
 		// Send the transformation
 		tf_broadcaster_->sendTransform(t);
-
-
 	}
 
 	void setTF()
@@ -512,194 +503,401 @@ public:
 		return end;
 	}
 
-	// Update car state
-	control_msgs::msg::CarState updateStatePacejka(control_msgs::msg::CarState &start, CarParams car_params)
+	// 각도 정규화 [-pi, pi]
+	static inline double normalizeAngle(double a)
 	{
-		if (abs(start.v) < 1.0e-8)
+		return std::remainder(a, 2.0 * M_PI);
+	}
+
+	// 안전한 나눗셈(분모가 너무 작으면 eps로 대체)
+	static inline double safe_div(double num, double den, double eps = 1e-8)
+	{
+		return num / (std::fabs(den) < eps ? (den >= 0.0 ? eps : -eps) : den);
+	}
+
+	control_msgs::msg::CarState updateStatePacejka(control_msgs::msg::CarState &start,
+												   const CarParams &car_params)
+	{
+		const double dt = 1.0 / simulator_frequency_;
+		const double eps_v = 1.0e-6; // 속도/분모 안정화용
+		const double eps_vx = 1.0e-6;
+
+		// 아주 느릴 때는 기존의 저속 전용 업데이트 사용
+		if (std::fabs(start.v) < 1.0e-8)
 		{
-			return update_k(start, start.accel, start.steer_vel, car_params, 1.0 / simulator_frequency_);
+			return update_k(start, start.accel, start.steer_vel, car_params, dt);
 		}
-		// Implement the update function for car
-		control_msgs::msg::CarState end;
-		double dt = 1.0 / simulator_frequency_;
-		double a_f = -atan2(start.vy + car_params.l_f * start.omega, start.vx) + start.steer;
-		double F_fy = car_params.D_f * sin(car_params.C_f * atan(car_params.B_f * a_f));
-		double a_r = -atan2(start.vy - car_params.l_r * start.omega, start.vx);
-		double F_ry = car_params.D_r * sin(car_params.C_r * atan(car_params.B_r * a_r));
 
-		double x_dot = start.v * cos(start.yaw + start.slip_angle);
-		double y_dot = start.v * sin(start.yaw + start.slip_angle);
-		double yaw_dot = start.omega;
-		double slip_angle_dot = ((F_fy + F_ry) / (car_params.mass * start.v)) - start.omega;
-		double v_dot = start.a;
-		double omega_dot = (car_params.l_f * F_fy * cos(start.steer) - car_params.l_r * F_ry) / car_params.I_z;
+		// 입력(명령)을 현재 가속/조향으로 간주: a_cmd = accel, steer rate = steer_vel
+		// 조향 각 적분(존재 시 제한)
+		double steer_next = start.steer + start.steer_vel * dt;
+		if (std::isfinite(car_params.steer_max) && car_params.steer_max > 0.0)
+		{
+			steer_next = std::clamp(steer_next, -car_params.steer_max, car_params.steer_max);
+		}
 
+		// Pacejka 코너링 강성(전/후) — 사이드슬립 각 계산 시 분모 안정화
+		const double vx_safe_f = std::copysign(std::max(std::fabs(start.vx), eps_vx), start.vx);
+		const double vx_safe_r = vx_safe_f;
+
+		const double a_f = -std::atan2(start.vy + car_params.l_f * start.omega, vx_safe_f) + steer_next;
+		const double a_r = -std::atan2(start.vy - car_params.l_r * start.omega, vx_safe_r);
+
+		const double F_fy = car_params.D_f * std::sin(car_params.C_f * std::atan(car_params.B_f * a_f));
+		const double F_ry = car_params.D_r * std::sin(car_params.C_r * std::atan(car_params.B_r * a_r));
+
+		// 운동학(월드 좌표 위치, 요) — 명확히 오일러 전진
+		const double x_dot = start.v * std::cos(start.yaw + start.slip_angle);
+		const double y_dot = start.v * std::sin(start.yaw + start.slip_angle);
+		const double yaw_dot = start.omega;
+
+		// 동역학(바디 좌표 속도/슬립/요속)
+		// v_dot은 입력 가속 a(= accel 명령)를 사용
+		const double v_dot = start.accel;
+
+		// slip_angle_dot = (ΣFy / (m v)) - ω  (v가 너무 작을 때 폭주 방지)
+		const double v_safe = (std::fabs(start.v) < eps_v) ? (start.v >= 0.0 ? eps_v : -eps_v) : start.v;
+		const double slip_angle_dot = safe_div((F_fy + F_ry), (car_params.mass * v_safe)) - start.omega;
+
+		// ω 점화: 앞축의 조향 각을 고려(코사인 항)
+		const double omega_dot =
+			(car_params.l_f * F_fy * std::cos(steer_next) - car_params.l_r * F_ry) / car_params.I_z;
+
+		// 적분
+		control_msgs::msg::CarState end = start; // 기본 복사 후 필요한 것만 갱신
 		end.px = start.px + x_dot * dt;
 		end.py = start.py + y_dot * dt;
-		end.yaw = start.yaw + yaw_dot * dt;
-		end.slip_angle = start.slip_angle + slip_angle_dot * dt;
+		end.yaw = normalizeAngle(start.yaw + yaw_dot * dt);
+		end.slip_angle = normalizeAngle(start.slip_angle + slip_angle_dot * dt);
 
+		// 속도 스칼라 v 먼저 갱신 후 제한
 		end.v = start.v + v_dot * dt;
-		end.vx = start.v * cos(start.slip_angle);
-		end.vy = start.v * sin(start.slip_angle);
+		if (car_params.speed_max > 0.0 && std::isfinite(car_params.speed_max))
+		{
+			end.v = std::clamp(end.v, -car_params.speed_max, car_params.speed_max);
+		}
+
+		// 제한된 v와 최신 slip_angle로 바디 좌표 성분 재계산(순서 중요)
+		end.vx = end.v * std::cos(end.slip_angle);
+		end.vy = end.v * std::sin(end.slip_angle);
+
+		// 요속 적분
 		end.omega = start.omega + omega_dot * dt;
 
-		end.a = start.accel;
-		end.ax = start.a * cos(start.slip_angle) - start.v * start.omega * sin(start.slip_angle);
-		end.ay = start.a * sin(start.slip_angle) + start.v * start.omega * cos(start.slip_angle);
+		// 바디 좌표 가속도(편의상 vx, vy 시간미분으로 정의)
+		// vx = v cosβ, vy = v sinβ → 미분식
+		const double vx_dot = v_dot * std::cos(end.slip_angle) - end.v * slip_angle_dot * std::sin(end.slip_angle);
+		const double vy_dot = v_dot * std::sin(end.slip_angle) + end.v * slip_angle_dot * std::cos(end.slip_angle);
+		end.ax = vx_dot;
+		end.ay = vy_dot;
 
-		end.accel = start.accel;
-		end.steer = start.steer;
+		// 스칼라 a(=long accel)와 명령/조향 상태 업데이트 정리
+		end.a = v_dot;			 // 현재 프레임에서의 종가속(= accel 명령)
+		end.accel = start.accel; // 입력 유지
+		end.steer = steer_next;	 // 적분 반영
+		end.steer_vel = start.steer_vel;
 
-		if (end.v > car_params.speed_max)
-		{
-			end.v = car_params.speed_max;
-		}
-		else if (end.v < -car_params.speed_max)
-		{
-			end.v = -car_params.speed_max;
-		}
-
-		if (end.yaw > M_PI)
-		{
-			end.yaw -= 2 * M_PI;
-		}
-		else if (end.yaw < -M_PI)
-		{
-			end.yaw += 2 * M_PI;
-		}
-
-		while (end.slip_angle > M_PI)
-		{
-			end.slip_angle -= 2 * M_PI;
-		}
-		while (end.slip_angle < -M_PI)
-		{
-			end.slip_angle += 2 * M_PI;
-		}
+		// 최종 안전: slip_angle, yaw는 이미 normalizeAngle로 정규화됨
 		return end;
 	}
 
+	static bool read_non_comment_line(std::ifstream &f, std::string &out)
+	{
+		while (std::getline(f, out))
+		{
+			if (out.empty())
+				continue;
+			// 앞뒤 공백 제거
+			size_t s = out.find_first_not_of(" \t\r");
+			size_t e = out.find_last_not_of(" \t\r");
+			if (s == std::string::npos)
+				continue;
+			out = out.substr(s, e - s + 1);
+			if (out.empty())
+				continue;
+			if (out[0] == '#')
+				continue;
+			return true;
+		}
+		return false;
+	}
 
-
-	// Function to read the PGM file
 	nav_msgs::msg::OccupancyGrid read_map_files(const std::string &pgm_file_path,
 												const std::string &yaml_file_path)
 	{
 		nav_msgs::msg::OccupancyGrid occupancy_grid;
 
-		// Parse YAML file
-		YAML::Node yaml_node = YAML::LoadFile(yaml_file_path);
-		double resolution = yaml_node["resolution"].as<double>();
-		std::vector<double> origin = yaml_node["origin"].as<std::vector<double>>();
-		double occupied_thresh = yaml_node["occupied_thresh"].as<double>();
-		double free_thresh = yaml_node["free_thresh"].as<double>();
+		// --- YAML 파싱 ---
+		YAML::Node yaml_node;
+		try
+		{
+			yaml_node = YAML::LoadFile(yaml_file_path);
+		}
+		catch (const std::exception &e)
+		{
+			std::cerr << "YAML load error: " << e.what() << std::endl;
+			return nav_msgs::msg::OccupancyGrid();
+		}
 
-		// Read PGM file
-		std::vector<int8_t> pgm_data;
-		int map_width, map_height;
+		// 필수 키
+		if (!yaml_node["resolution"] || !yaml_node["origin"] ||
+			!yaml_node["occupied_thresh"] || !yaml_node["free_thresh"])
+		{
+			std::cerr << "YAML missing required keys (resolution/origin/occupied_thresh/free_thresh)\n";
+			return nav_msgs::msg::OccupancyGrid();
+		}
+
+		const double resolution = yaml_node["resolution"].as<double>();
+		const auto origin = yaml_node["origin"].as<std::vector<double>>();
+		const double occupied_thresh = yaml_node["occupied_thresh"].as<double>();
+		const double free_thresh = yaml_node["free_thresh"].as<double>();
+		const bool negate = yaml_node["negate"] ? yaml_node["negate"].as<int>() != 0 : false;
+		const std::string mode = yaml_node["mode"] ? yaml_node["mode"].as<std::string>() : "trinary";
+
+		if (origin.size() < 3)
+		{
+			std::cerr << "YAML origin must be [x, y, yaw]\n";
+			return nav_msgs::msg::OccupancyGrid();
+		}
+
 		std::ifstream file(pgm_file_path, std::ios::binary);
 		if (!file.is_open())
 		{
 			std::cerr << "Failed to open PGM file: " << pgm_file_path << std::endl;
-			return nav_msgs::msg::OccupancyGrid(); // Return an empty OccupancyGrid object
+			return nav_msgs::msg::OccupancyGrid();
 		}
 
 		std::string line;
-		std::getline(file, line); // Read PGM format (P5)
-
-		if (line != "P5")
+		if (!std::getline(file, line) || line != "P5")
 		{
-			std::cerr << "Invalid PGM file format: " << line << std::endl;
-			return nav_msgs::msg::OccupancyGrid(); // Return an empty OccupancyGrid object
+			std::cerr << "Invalid PGM magic (expect P5), got: " << line << std::endl;
+			return nav_msgs::msg::OccupancyGrid();
 		}
 
-		// Skip comments
-		while (std::getline(file, line))
+		if (!read_non_comment_line(file, line))
 		{
-			if (line[0] != '#')
-				break;
+			std::cerr << "Missing PGM width/height line\n";
+			return nav_msgs::msg::OccupancyGrid();
+		}
+		int map_width = 0, map_height = 0;
+		{
+			std::stringstream ss(line);
+			ss >> map_width >> map_height;
+			if (map_width <= 0 || map_height <= 0)
+			{
+				std::cerr << "Invalid PGM size\n";
+				return nav_msgs::msg::OccupancyGrid();
+			}
 		}
 
-		std::stringstream ss(line);
-		ss >> map_width >> map_height;
+		if (!read_non_comment_line(file, line))
+		{
+			std::cerr << "Missing PGM maxval line\n";
+			return nav_msgs::msg::OccupancyGrid();
+		}
+		int maxval = 0;
+		{
+			std::stringstream ss(line);
+			ss >> maxval;
+			if (maxval != 255)
+			{
+				std::cerr << "Unsupported PGM maxval: " << maxval << " (expect 255)\n";
+				return nav_msgs::msg::OccupancyGrid();
+			}
+		}
 
-		std::getline(file, line); // Read max grayscale value
-
-		pgm_data.resize(map_width * map_height);
-
+		std::vector<uint8_t> pgm_data(static_cast<size_t>(map_width) * map_height);
 		file.read(reinterpret_cast<char *>(pgm_data.data()), pgm_data.size());
-
+		if (file.gcount() != static_cast<std::streamsize>(pgm_data.size()))
+		{
+			std::cerr << "PGM data size mismatch\n";
+			return nav_msgs::msg::OccupancyGrid();
+		}
 		file.close();
 
-		// Set OccupancyGrid message fields
+		// --- OccupancyGrid info ---
 		occupancy_grid.info.resolution = resolution;
-		occupancy_grid.info.width = map_width;
-		occupancy_grid.info.height = map_height;
+		occupancy_grid.info.width = static_cast<uint32_t>(map_width);
+		occupancy_grid.info.height = static_cast<uint32_t>(map_height);
+
 		occupancy_grid.info.origin.position.x = origin[0];
 		occupancy_grid.info.origin.position.y = origin[1];
-		occupancy_grid.info.origin.position.z = origin[2];
-		occupancy_grid.info.origin.orientation.x = 0.0;
-		occupancy_grid.info.origin.orientation.y = 0.0;
-		occupancy_grid.info.origin.orientation.z = 0.0;
-		occupancy_grid.info.origin.orientation.w = 1.0;
+		occupancy_grid.info.origin.position.z = 0.0;
 
-		// Convert the PGM data to occupancy values
-		occupancy_grid.data.resize(occupancy_grid.info.width * occupancy_grid.info.height);
+		// yaw -> quaternion
+		const double yaw = origin[2];
+		tf2::Quaternion q;
+		q.setRPY(0.0, 0.0, yaw);
+		occupancy_grid.info.origin.orientation = tf2::toMsg(q);
+
+		occupancy_grid.data.resize(static_cast<size_t>(map_width) * map_height);
+
+		// 미리 임계치(0~255)로 변환
+		const int occ_thr = static_cast<int>(occupied_thresh * 255.0 + 0.5);
+		const int free_thr = static_cast<int>(free_thresh * 255.0 + 0.5);
+		const int denom = std::max(1, free_thr - occ_thr);
+
 		for (int y = 0; y < map_height; ++y)
 		{
+			const int reversed_y = map_height - 1 - y;
 			for (int x = 0; x < map_width; ++x)
 			{
-				int reversed_y = map_height - 1 - y;
-				uint8_t pixel = pgm_data[x + reversed_y * map_width];
-				int index = x + y * map_width;
+				uint8_t p = pgm_data[static_cast<size_t>(x) + static_cast<size_t>(reversed_y) * map_width];
+				if (negate)
+					p = static_cast<uint8_t>(255 - p);
 
-				if (pixel == 205)
+				int8_t out = -1;
+
+				if (p == 205)
 				{
-					occupancy_grid.data[index] = -1; // Unknown
+					out = -1;
 				}
-				else if (pixel > occupied_thresh * 255)
+				else if (p <= occ_thr)
 				{
-					occupancy_grid.data[index] = 0; // Free
+					out = 100;
 				}
-				else if (pixel < free_thresh * 255)
+				else if (p >= free_thr)
 				{
-					occupancy_grid.data[index] = 100; // Occupied
+					out = 0;
 				}
 				else
 				{
-					occupancy_grid.data[index] = -1; // Unknown
+					if (mode == "scale")
+					{
+						const double ratio = static_cast<double>(free_thr - static_cast<int>(p)) / static_cast<double>(denom);
+						int v = static_cast<int>(std::round(std::clamp(ratio, 0.0, 1.0) * 100.0));
+						out = static_cast<int8_t>(std::clamp(v, 0, 100));
+					}
+					else
+					{
+						out = -1;
+					}
 				}
+
+				occupancy_grid.data[static_cast<size_t>(x) + static_cast<size_t>(y) * map_width] = out;
 			}
 		}
 
 		return occupancy_grid;
 	}
 
-	// Function to publish the OccupancyGrid map
 	void pub_map(const nav_msgs::msg::OccupancyGrid &map)
 	{
 		nav_msgs::msg::OccupancyGrid msg = map;
-
-		// Update the header timestamp before publishing
 		msg.header.stamp = this->get_clock()->now();
 		msg.header.frame_id = "map";
+		msg.info.map_load_time = msg.header.stamp;
 
-		// Publish the map
 		map_pub_->publish(msg);
 	}
+	nav_msgs::msg::Path createCenterPathFromCsv(const std::string &csv_file_path)
+	{
+		nav_msgs::msg::Path path;
+		path.header.frame_id = "map";
+		path.header.stamp = this->get_clock()->now();
 
-	 bool check_colision()
-    {
-        return false;
-    }
+		std::ifstream file(csv_file_path);
+		if (!file.is_open())
+		{
+			RCLCPP_ERROR(this->get_logger(), "Failed to open path file: %s", csv_file_path.c_str());
+			return path;
+		}
 
+		auto trim = [](std::string &s)
+		{
+			s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch)
+											{ return !std::isspace(ch); }));
+			s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch)
+								 { return !std::isspace(ch); })
+						.base(),
+					s.end());
+		};
 
-	void pub_colision(
+		std::string line;
+		size_t line_no = 0;
+		while (std::getline(file, line))
+		{
+			++line_no;
+			trim(line);
+			if (line.empty() || line[0] == '#')
+				continue;
+
+			// 쉼표 우선(csv), 아니면 공백 분리도 허용
+			std::vector<std::string> tokens;
+			{
+				std::stringstream ss(line);
+				std::string item;
+				if (line.find(',') != std::string::npos)
+				{
+					while (std::getline(ss, item, ','))
+					{
+						trim(item);
+						if (!item.empty())
+							tokens.push_back(item);
+					}
+				}
+				else
+				{
+					// 공백 기반 토큰화
+					while (ss >> item)
+						tokens.push_back(item);
+				}
+			}
+
+			if (tokens.size() < 2)
+			{
+				// 첫 줄이 "x,y" 같은 헤더일 수 있음 → 스킵
+				RCLCPP_WARN(this->get_logger(), "Invalid line (need at least 2 numbers) at %zu: %s", line_no, line.c_str());
+				continue;
+			}
+
+			try
+			{
+				double x = std::stod(tokens[0]);
+				double y = std::stod(tokens[1]);
+
+				geometry_msgs::msg::PoseStamped pose;
+				pose.header = path.header; // 동일한 frame과 stamp 사용
+				pose.pose.position.x = x;
+				pose.pose.position.y = y;
+				pose.pose.position.z = 0.0;
+
+				// 회전은 0으로 가정. (필요하면 인접 점으로 yaw 계산해 넣을 수 있음)
+				tf2::Quaternion q;
+				q.setRPY(0.0, 0.0, 0.0);
+				pose.pose.orientation = tf2::toMsg(q);
+
+				path.poses.push_back(pose);
+			}
+			catch (const std::exception &e)
+			{
+				// 헤더 문자열 등 double 변환 실패 시 스킵
+				RCLCPP_WARN(this->get_logger(), "Failed to parse numbers at line %zu: %s", line_no, line.c_str());
+			}
+		}
+
+		file.close();
+		RCLCPP_INFO(this->get_logger(), "Loaded %zu poses from CSV.", path.poses.size());
+		return path;
+	}
+
+	void pub_center_path(const nav_msgs::msg::Path &path_in)
+	{
+		nav_msgs::msg::Path msg = path_in;
+		msg.header.stamp = this->get_clock()->now(); // 최신 타임스탬프로 갱신
+		msg.header.frame_id = "map";
+		center_path_pub_->publish(msg);
+	}
+
+	bool check_collision()
+	{
+		return false;
+	}
+	void pub_collision(
 		rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr collision_pub)
 	{
 		std_msgs::msg::Bool collision_msg;
-		collision_msg.data = check_colision();
+		collision_msg.data = check_collision();
 		collision_pub->publish(collision_msg);
 	}
 
@@ -718,18 +916,16 @@ public:
 		odom_msg.pose.pose.position.z = 0.0;
 		tf2::Quaternion q;
 		q.setRPY(0, 0, state.yaw);
-		odom_msg.pose.pose.orientation=tf2::toMsg(q); 
+		odom_msg.pose.pose.orientation = tf2::toMsg(q);
 
-
-		odom_msg.twist.twist.linear.x = state.v;
-		odom_msg.twist.twist.linear.y = 0.0;
+		odom_msg.twist.twist.linear.x = state.vx;
+		odom_msg.twist.twist.linear.y = state.vy;
 		odom_msg.twist.twist.linear.z = 0.0;
 		odom_msg.twist.twist.angular.x = 0.0;
 		odom_msg.twist.twist.angular.y = 0.0;
 		odom_msg.twist.twist.angular.z = state.omega;
 		odom_pub->publish(odom_msg);
 	}
-	
 };
 
 int main(int argc, char *argv[])
