@@ -37,7 +37,6 @@ def generate_launch_description():
 
     rviz_config_file = os.path.join(pkg_dir, "params", "simulator.rviz")
     simulation_config_file = os.path.join(pkg_dir, "params", "simulation.yaml")
-    env_config_file = os.path.join(pkg_dir, "params", "environment.yaml")
     map_folder = os.path.join(pkg_dir, "maps/f1tenth_racetracks")
     map_img = os.path.join(map_folder, map_name, map_name + "_map.png")
     map_yaml = os.path.join(map_folder, map_name, map_name + "_map.yaml")
