@@ -27,7 +27,6 @@ public:
     declare_parameter<double>("obstacle_radius_m", 0.1);
     // declare_parameter<bool>("use_sim_time", false);
 
-
     get_parameter("map_img_file_path", img_path_);
     get_parameter("map_yaml_file_path", yaml_path_);
     get_parameter("race_line_file_path", race_line_path_);
@@ -230,25 +229,46 @@ private:
       return;
     }
 
-  // yaw from x,y (prev→curr). Minimal.
-  const double EPS=1e-6;
-  for(size_t i=0;i<rows.size();++i){
-    double dx=0,dy=0;
-    if(i==0 && rows.size()>1){ dx=rows[1].x-rows[0].x; dy=rows[1].y-rows[0].y; }
-    else if(i>0){ dx=rows[i].x-rows[i-1].x; dy=rows[i].y-rows[i-1].y; }
-    else { rows[i].psi=0.0; continue; }
-    rows[i].psi=(std::hypot(dx,dy)>EPS)?std::atan2(dy,dx):(i?rows[i-1].psi:0.0);
-  }
-  // unwrap to avoid ±π jumps
-  for(size_t i=1;i<rows.size();++i){
-    double d=rows[i].psi-rows[i-1].psi;
-    while(d> M_PI) d-=2*M_PI;
-    while(d<-M_PI) d+=2*M_PI;
-    rows[i].psi=rows[i-1].psi+d;
-  }
-  // widths default if CSV lacks them
-  for(auto &r:rows){ if(!r.hl) r.wl=0.0; if(!r.hr) r.wr=0.0; }
-
+    // yaw from x,y (prev→curr). Minimal.
+    const double EPS = 1e-6;
+    for (size_t i = 0; i < rows.size(); ++i)
+    {
+      double dx = 0, dy = 0;
+      if (i == 0 && rows.size() > 1)
+      {
+        dx = rows[1].x - rows[0].x;
+        dy = rows[1].y - rows[0].y;
+      }
+      else if (i > 0)
+      {
+        dx = rows[i].x - rows[i - 1].x;
+        dy = rows[i].y - rows[i - 1].y;
+      }
+      else
+      {
+        rows[i].psi = 0.0;
+        continue;
+      }
+      rows[i].psi = (std::hypot(dx, dy) > EPS) ? std::atan2(dy, dx) : (i ? rows[i - 1].psi : 0.0);
+    }
+    // unwrap to avoid ±π jumps
+    for (size_t i = 1; i < rows.size(); ++i)
+    {
+      double d = rows[i].psi - rows[i - 1].psi;
+      while (d > M_PI)
+        d -= 2 * M_PI;
+      while (d < -M_PI)
+        d += 2 * M_PI;
+      rows[i].psi = rows[i - 1].psi + d;
+    }
+    // widths default if CSV lacks them
+    for (auto &r : rows)
+    {
+      if (!r.hl)
+        r.wl = 0.0;
+      if (!r.hr)
+        r.wr = 0.0;
+    }
 
     // build paths
     nav_msgs::msg::Path pc, pl, pr;
