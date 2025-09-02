@@ -10,6 +10,7 @@ racecar_simulator:
     detect_car_mode: false               # detect other cars
     state_noise_mode: false              # add noise to the state
     scan_noise_mode: false               # add noise to the scan
+    # use_sim_time: true                   # use simulation time
 
     # car1
     vehicle_model0: 0                   # 0: single track model, 1: pacejka tire model

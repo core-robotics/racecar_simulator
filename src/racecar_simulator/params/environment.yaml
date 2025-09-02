@@ -1,10 +1,10 @@
 map_publisher:
   ros__parameters:
-    map_img_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/levinelobby_track.pgm"
-    map_yaml_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/levinelobby_track.yaml"
+    map_img_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/f1tenth_racetracks/Catalunya/Catalunya_map.png"
+    map_yaml_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/f1tenth_racetracks/Catalunya/Catalunya_map.yaml"
+    race_line_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/f1tenth_racetracks/Catalunya/Catalunya_centerline.csv"
     frame_id: "map"
+    # use_sim_time: true
     obstacle_radius_m: 0.1
 
-    # pgm_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/c_track.pgm"
-    # yaml_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/c_track.yaml"
 

@@ -5,7 +5,8 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "/opt/ros/humble/include/**",
-                "/home/a/racecar_simulator/src/racecar_simulator/include/**"
+                "/home/a/racecar_simulator/src/racecar_simulator/include/**",
+                "/usr/include/**"
 
             ],
             "defines": [],

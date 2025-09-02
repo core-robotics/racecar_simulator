@@ -4,23 +4,19 @@ from launch.substitutions import Command
 from launch_ros.parameter_descriptions import ParameterValue
 import os
 
-
 def generate_launch_description():
 
     ld = LaunchDescription()
 
-    # Get the share directory for the racecar_simulator package
     pkg_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
-    # Define the path to the rviz configuration file
     rviz_config_file = os.path.join(pkg_dir, "params", "simulator.rviz")
     simulation_config_file = os.path.join(pkg_dir, "params", "simulation.yaml")
     env_config_file = os.path.join(pkg_dir, "params", "environment.yaml")
 
-    # # Define the path to the robot description file
     car0_xacro_file = os.path.join(pkg_dir, "params", "racecar0.xacro")
     car1_xacro_file = os.path.join(pkg_dir, "params", "racecar1.xacro")
-     
+
     robot0_state_publisher_node = Node(
         package="robot_state_publisher",
         executable="robot_state_publisher",
@@ -58,19 +54,21 @@ def generate_launch_description():
         executable="simulator",
         name="racecar_simulator",
         output="screen",
-        parameters=[simulation_config_file,
-                    # {"use_sim_time": True}
-                    ],
+        parameters=[
+            simulation_config_file,
+            # {"use_sim_time": True},   
+        ],
     )
-    
+
     map_publisher_node = Node(
         package="racecar_simulator",
         executable="map_publisher",
         name="map_publisher",
         output="screen",
-        parameters=[env_config_file,
-                    # {"use_sim_time": True}
-                    ],
+        parameters=[
+            env_config_file,
+            # {"use_sim_time": True},  
+        ],
     )
 
     rviz_node = Node(
@@ -87,6 +85,5 @@ def generate_launch_description():
     ld.add_action(map_publisher_node)
     ld.add_action(robot0_state_publisher_node)
     ld.add_action(robot1_state_publisher_node)
-    
 
     return ld

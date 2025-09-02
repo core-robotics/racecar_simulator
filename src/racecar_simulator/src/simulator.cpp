@@ -113,8 +113,6 @@ public:
 		this->declare_parameter("detect_car_mode", false);
 		this->declare_parameter("state_noise_mode", false);
 		this->declare_parameter("scan_noise_mode", false);
-		// this->declare_parameter<std::string>("pgm_file_path", "/home/a/racecar_simulator/src/racecar_simulator/maps/map7.pgm");
-		// this->declare_parameter<std::string>("yaml_file_path", "/home/a/racecar_simulator/src/racecar_simulator/maps/map7.yaml");
 
 
 		this->get_parameter("simulator_frequency", simulator_frequency_);
@@ -126,8 +124,7 @@ public:
 		this->get_parameter("detect_car_mode", detect_car_mode_);
 		this->get_parameter("state_noise_mode", state_noise_mode_);
 		this->get_parameter("scan_noise_mode", scan_noise_mode_);
-		// this->get_parameter("pgm_file_path", pgm_file_path_);
-		// this->get_parameter("yaml_file_path", yaml_file_path_);
+
 
 		// Car0 parameters
 		this->declare_parameter("vehicle_model0",1);
@@ -249,33 +246,21 @@ public:
 		scan1_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic1_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
 		state0_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic0_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
 		state1_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic1_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
-		// map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("map", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local());
 		collision0_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision0", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
 		collision1_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision1", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
 		odom0_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom0", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
 		odom1_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom1", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
-		// imu0_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("imu0", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
-		// imu1_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("imu1", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
-
-
 		scan_simulator_ = ScanSimulator2D(scan_beams_, scan_fov_, scan_std_dev_);
-		// original_map_ = read_map_files(pgm_file_path_, yaml_file_path_);
-		// current_map_ = original_map_;
+
 
 
 		// Initialize simulator
-		RCLCPP_INFO(this->get_logger(), "Racecar simulator initialized");
-		RCLCPP_INFO(this->get_logger(), "Simulator frequency: %f Hz", simulator_frequency_);
-		RCLCPP_INFO(this->get_logger(), "Publish frequency: %f Hz", pub_frequency_);
-		RCLCPP_INFO(this->get_logger(), "vehicle_model0: %d", vehicle_model0_);
-		RCLCPP_INFO(this->get_logger(), "vehicle_model1: %d", vehicle_model1_);
+		RCLCPP_INFO(this->get_logger(), "\nRacecar simulator initialized");
+		RCLCPP_INFO(this->get_logger(), "\nSimulator frequency: %f Hz", simulator_frequency_);
+		RCLCPP_INFO(this->get_logger(), "\nPublish frequency: %f Hz", pub_frequency_);
+		// RCLCPP_INFO(this->get_logger(), "\nvehicle_model0: %d", vehicle_model0_);
+		// RCLCPP_INFO(this->get_logger(), "\nvehicle_model1: %d", vehicle_model1_);
 
-		// c track
-		// car_state0_.px = 0.9655838012695312;
-		// car_state0_.py = -0.35892820358276367;
-		// porto
-		// car_state0_.px = -1.9128150939941406;
-		// car_state0_.py = -0.74951171875;
 		//levinelobby
 		car_state0_.px = 0.688;
 		car_state0_.py = -0.906;
@@ -297,12 +282,6 @@ public:
 	void pubLoop()
 	{
 		current_map_ = original_map_;
-		// if(detect_car_mode_)
-		// {
-		// 	current_map_ = mark_vehicle_on_grid(current_map_, car_state0_);
-		// 	current_map_ = mark_vehicle_on_grid(current_map_, car_state1_);
-		// }
-		
 		pub_scan(car_state0_, "laser_model0", scan_data_float0_, scan0_pub_,scan_msg_data0_);
 		pub_scan(car_state1_, "laser_model1", scan_data_float1_, scan1_pub_,scan_msg_data1_);
 		state0Publisher();
@@ -311,10 +290,6 @@ public:
 		pub_colision(scan_msg_data1_, collision1_pub_);
 		pub_odom(car_state0_, "base_link0", "odom0", odom0_pub_);
 		pub_odom(car_state1_, "base_link1", "odom1", odom1_pub_);
-		// pub_imu(car_state0_, "base_link0", imu0_pub_);
-		// pub_imu(car_state1_, "base_link1", imu1_pub_);
-
-		// pub_map(current_map_);
 	}
 
 	// Publish transform between frames

@@ -17,6 +17,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
+find_package(OpenCV REQUIRED)
 find_package(control_msgs REQUIRED)
 
 # Include directories
@@ -32,7 +33,7 @@ add_library(param_loader src/param_loader.cpp)
 
 # Link libraries
 target_link_libraries(simulator scan_simulator_2d param_loader yaml-cpp)
-target_link_libraries(map_publisher yaml-cpp)
+target_link_libraries(map_publisher yaml-cpp ${OpenCV_LIBS})
 target_link_libraries(scan_simulator_2d distance_transform)
 
 
