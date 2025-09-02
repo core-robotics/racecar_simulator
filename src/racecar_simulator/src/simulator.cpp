@@ -1,7 +1,7 @@
 #include <chrono>
 #include <functional>
 #include <memory>
-#include <yaml-cpp/yaml.h>
+// #include <yaml-cpp/yaml.h>
 #include <fstream>
 
 #include "rclcpp/rclcpp.hpp"
@@ -49,8 +49,8 @@ private:
 	rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr collision1_pub_;
 	rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom0_pub_;
 	rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom1_pub_;
-	rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu0_pub_;
-	rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu1_pub_;
+	// rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu0_pub_;
+	// rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu1_pub_;
 
 
 	control_msgs::msg::CarState car_state0_, car_state1_;
@@ -113,8 +113,8 @@ public:
 		this->declare_parameter("detect_car_mode", false);
 		this->declare_parameter("state_noise_mode", false);
 		this->declare_parameter("scan_noise_mode", false);
-		this->declare_parameter<std::string>("pgm_file_path", "/home/a/racecar_simulator/src/racecar_simulator/maps/map7.pgm");
-		this->declare_parameter<std::string>("yaml_file_path", "/home/a/racecar_simulator/src/racecar_simulator/maps/map7.yaml");
+		// this->declare_parameter<std::string>("pgm_file_path", "/home/a/racecar_simulator/src/racecar_simulator/maps/map7.pgm");
+		// this->declare_parameter<std::string>("yaml_file_path", "/home/a/racecar_simulator/src/racecar_simulator/maps/map7.yaml");
 
 
 		this->get_parameter("simulator_frequency", simulator_frequency_);
@@ -126,8 +126,8 @@ public:
 		this->get_parameter("detect_car_mode", detect_car_mode_);
 		this->get_parameter("state_noise_mode", state_noise_mode_);
 		this->get_parameter("scan_noise_mode", scan_noise_mode_);
-		this->get_parameter("pgm_file_path", pgm_file_path_);
-		this->get_parameter("yaml_file_path", yaml_file_path_);
+		// this->get_parameter("pgm_file_path", pgm_file_path_);
+		// this->get_parameter("yaml_file_path", yaml_file_path_);
 
 		// Car0 parameters
 		this->declare_parameter("vehicle_model0",1);
@@ -249,18 +249,18 @@ public:
 		scan1_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic1_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
 		state0_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic0_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
 		state1_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic1_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
-		map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("map", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local());
+		// map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("map", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local());
 		collision0_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision0", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
 		collision1_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision1", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
 		odom0_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom0", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
 		odom1_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom1", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
-		imu0_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("imu0", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
-		imu1_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("imu1", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
+		// imu0_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("imu0", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
+		// imu1_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("imu1", rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
 
 
 		scan_simulator_ = ScanSimulator2D(scan_beams_, scan_fov_, scan_std_dev_);
-		original_map_ = read_map_files(pgm_file_path_, yaml_file_path_);
-		current_map_ = original_map_;
+		// original_map_ = read_map_files(pgm_file_path_, yaml_file_path_);
+		// current_map_ = original_map_;
 
 
 		// Initialize simulator
@@ -297,11 +297,11 @@ public:
 	void pubLoop()
 	{
 		current_map_ = original_map_;
-		if(detect_car_mode_)
-		{
-			current_map_ = mark_vehicle_on_grid(current_map_, car_state0_);
-			current_map_ = mark_vehicle_on_grid(current_map_, car_state1_);
-		}
+		// if(detect_car_mode_)
+		// {
+		// 	current_map_ = mark_vehicle_on_grid(current_map_, car_state0_);
+		// 	current_map_ = mark_vehicle_on_grid(current_map_, car_state1_);
+		// }
 		
 		pub_scan(car_state0_, "laser_model0", scan_data_float0_, scan0_pub_,scan_msg_data0_);
 		pub_scan(car_state1_, "laser_model1", scan_data_float1_, scan1_pub_,scan_msg_data1_);
@@ -311,10 +311,10 @@ public:
 		pub_colision(scan_msg_data1_, collision1_pub_);
 		pub_odom(car_state0_, "base_link0", "odom0", odom0_pub_);
 		pub_odom(car_state1_, "base_link1", "odom1", odom1_pub_);
-		pub_imu(car_state0_, "base_link0", imu0_pub_);
-		pub_imu(car_state1_, "base_link1", imu1_pub_);
+		// pub_imu(car_state0_, "base_link0", imu0_pub_);
+		// pub_imu(car_state1_, "base_link1", imu1_pub_);
 
-		pub_map(current_map_);
+		// pub_map(current_map_);
 	}
 
 	// Publish transform between frames
@@ -849,176 +849,176 @@ public:
 		return value;
 	}
 
-	// Function to read the PGM file
-	nav_msgs::msg::OccupancyGrid read_map_files(const std::string &pgm_file_path,
-												const std::string &yaml_file_path)
-	{
-		nav_msgs::msg::OccupancyGrid occupancy_grid;
+	// // Function to read the PGM file
+	// nav_msgs::msg::OccupancyGrid read_map_files(const std::string &pgm_file_path,
+	// 											const std::string &yaml_file_path)
+	// {
+	// 	nav_msgs::msg::OccupancyGrid occupancy_grid;
 
-		// Parse YAML file
-		YAML::Node yaml_node = YAML::LoadFile(yaml_file_path);
-		double resolution = yaml_node["resolution"].as<double>();
-		std::vector<double> origin = yaml_node["origin"].as<std::vector<double>>();
-		double occupied_thresh = yaml_node["occupied_thresh"].as<double>();
-		double free_thresh = yaml_node["free_thresh"].as<double>();
+	// 	// Parse YAML file
+	// 	YAML::Node yaml_node = YAML::LoadFile(yaml_file_path);
+	// 	double resolution = yaml_node["resolution"].as<double>();
+	// 	std::vector<double> origin = yaml_node["origin"].as<std::vector<double>>();
+	// 	double occupied_thresh = yaml_node["occupied_thresh"].as<double>();
+	// 	double free_thresh = yaml_node["free_thresh"].as<double>();
 
-		// Read PGM file
-		std::vector<int8_t> pgm_data;
-		int map_width, map_height;
-		std::ifstream file(pgm_file_path, std::ios::binary);
-		if (!file.is_open())
-		{
-			std::cerr << "Failed to open PGM file: " << pgm_file_path << std::endl;
-			return nav_msgs::msg::OccupancyGrid(); // Return an empty OccupancyGrid object
-		}
+	// 	// Read PGM file
+	// 	std::vector<int8_t> pgm_data;
+	// 	int map_width, map_height;
+	// 	std::ifstream file(pgm_file_path, std::ios::binary);
+	// 	if (!file.is_open())
+	// 	{
+	// 		std::cerr << "Failed to open PGM file: " << pgm_file_path << std::endl;
+	// 		return nav_msgs::msg::OccupancyGrid(); // Return an empty OccupancyGrid object
+	// 	}
 
-		std::string line;
-		std::getline(file, line); // Read PGM format (P5)
+	// 	std::string line;
+	// 	std::getline(file, line); // Read PGM format (P5)
 
-		if (line != "P5")
-		{
-			std::cerr << "Invalid PGM file format: " << line << std::endl;
-			return nav_msgs::msg::OccupancyGrid(); // Return an empty OccupancyGrid object
-		}
+	// 	if (line != "P5")
+	// 	{
+	// 		std::cerr << "Invalid PGM file format: " << line << std::endl;
+	// 		return nav_msgs::msg::OccupancyGrid(); // Return an empty OccupancyGrid object
+	// 	}
 
-		// Skip comments
-		while (std::getline(file, line))
-		{
-			if (line[0] != '#')
-				break;
-		}
+	// 	// Skip comments
+	// 	while (std::getline(file, line))
+	// 	{
+	// 		if (line[0] != '#')
+	// 			break;
+	// 	}
 
-		std::stringstream ss(line);
-		ss >> map_width >> map_height;
+	// 	std::stringstream ss(line);
+	// 	ss >> map_width >> map_height;
 
-		std::getline(file, line); // Read max grayscale value
+	// 	std::getline(file, line); // Read max grayscale value
 
-		pgm_data.resize(map_width * map_height);
+	// 	pgm_data.resize(map_width * map_height);
 
-		file.read(reinterpret_cast<char *>(pgm_data.data()), pgm_data.size());
+	// 	file.read(reinterpret_cast<char *>(pgm_data.data()), pgm_data.size());
 
-		file.close();
+	// 	file.close();
 
-		// Set OccupancyGrid message fields
-		occupancy_grid.info.resolution = resolution;
-		occupancy_grid.info.width = map_width;
-		occupancy_grid.info.height = map_height;
-		occupancy_grid.info.origin.position.x = origin[0];
-		occupancy_grid.info.origin.position.y = origin[1];
-		occupancy_grid.info.origin.position.z = origin[2];
-		occupancy_grid.info.origin.orientation.x = 0.0;
-		occupancy_grid.info.origin.orientation.y = 0.0;
-		occupancy_grid.info.origin.orientation.z = 0.0;
-		occupancy_grid.info.origin.orientation.w = 1.0;
+	// 	// Set OccupancyGrid message fields
+	// 	occupancy_grid.info.resolution = resolution;
+	// 	occupancy_grid.info.width = map_width;
+	// 	occupancy_grid.info.height = map_height;
+	// 	occupancy_grid.info.origin.position.x = origin[0];
+	// 	occupancy_grid.info.origin.position.y = origin[1];
+	// 	occupancy_grid.info.origin.position.z = origin[2];
+	// 	occupancy_grid.info.origin.orientation.x = 0.0;
+	// 	occupancy_grid.info.origin.orientation.y = 0.0;
+	// 	occupancy_grid.info.origin.orientation.z = 0.0;
+	// 	occupancy_grid.info.origin.orientation.w = 1.0;
 
-		// Convert the PGM data to occupancy values
-		occupancy_grid.data.resize(occupancy_grid.info.width * occupancy_grid.info.height);
-		for (int y = 0; y < map_height; ++y)
-		{
-			for (int x = 0; x < map_width; ++x)
-			{
-				int reversed_y = map_height - 1 - y;
-				uint8_t pixel = pgm_data[x + reversed_y * map_width];
-				int index = x + y * map_width;
+	// 	// Convert the PGM data to occupancy values
+	// 	occupancy_grid.data.resize(occupancy_grid.info.width * occupancy_grid.info.height);
+	// 	for (int y = 0; y < map_height; ++y)
+	// 	{
+	// 		for (int x = 0; x < map_width; ++x)
+	// 		{
+	// 			int reversed_y = map_height - 1 - y;
+	// 			uint8_t pixel = pgm_data[x + reversed_y * map_width];
+	// 			int index = x + y * map_width;
 
-				if (pixel == 205)
-				{
-					occupancy_grid.data[index] = -1; // Unknown
-				}
-				else if (pixel > occupied_thresh * 255)
-				{
-					occupancy_grid.data[index] = 0; // Free
-				}
-				else if (pixel < free_thresh * 255)
-				{
-					occupancy_grid.data[index] = 100; // Occupied
-				}
-				else
-				{
-					occupancy_grid.data[index] = -1; // Unknown
-				}
-			}
-		}
+	// 			if (pixel == 205)
+	// 			{
+	// 				occupancy_grid.data[index] = -1; // Unknown
+	// 			}
+	// 			else if (pixel > occupied_thresh * 255)
+	// 			{
+	// 				occupancy_grid.data[index] = 0; // Free
+	// 			}
+	// 			else if (pixel < free_thresh * 255)
+	// 			{
+	// 				occupancy_grid.data[index] = 100; // Occupied
+	// 			}
+	// 			else
+	// 			{
+	// 				occupancy_grid.data[index] = -1; // Unknown
+	// 			}
+	// 		}
+	// 	}
 
-		return occupancy_grid;
-	}
+	// 	return occupancy_grid;
+	// }
 
-	// Function to publish the OccupancyGrid map
-	void pub_map(const nav_msgs::msg::OccupancyGrid &map)
-	{
-		nav_msgs::msg::OccupancyGrid msg = map;
+	// // Function to publish the OccupancyGrid map
+	// void pub_map(const nav_msgs::msg::OccupancyGrid &map)
+	// {
+	// 	nav_msgs::msg::OccupancyGrid msg = map;
 
-		// Update the header timestamp before publishing
-		msg.header.stamp = this->get_clock()->now();
-		msg.header.frame_id = "map";
+	// 	// Update the header timestamp before publishing
+	// 	msg.header.stamp = this->get_clock()->now();
+	// 	msg.header.frame_id = "map";
 
-		// Publish the map
-		map_pub_->publish(msg);
-	}
+	// 	// Publish the map
+	// 	map_pub_->publish(msg);
+	// }
 
-	nav_msgs::msg::OccupancyGrid mark_vehicle_on_grid(
-		const nav_msgs::msg::OccupancyGrid &grid,
-		control_msgs::msg::CarState &state)
-	{
-		// 복사본을 생성 (원본 데이터를 손상시키지 않기 위해)
-		nav_msgs::msg::OccupancyGrid modified_grid = grid;
+	// nav_msgs::msg::OccupancyGrid mark_vehicle_on_grid(
+	// 	const nav_msgs::msg::OccupancyGrid &grid,
+	// 	control_msgs::msg::CarState &state)
+	// {
+	// 	// 복사본을 생성 (원본 데이터를 손상시키지 않기 위해)
+	// 	nav_msgs::msg::OccupancyGrid modified_grid = grid;
 
-		// Occupancy Grid의 메타데이터
-		float resolution = grid.info.resolution;
-		auto origin = grid.info.origin;
-		int width = grid.info.width;
-		int height = grid.info.height;
+	// 	// Occupancy Grid의 메타데이터
+	// 	float resolution = grid.info.resolution;
+	// 	auto origin = grid.info.origin;
+	// 	int width = grid.info.width;
+	// 	int height = grid.info.height;
 
-		double block_size = 0.2; // meters
+	// 	double block_size = 0.2; // meters
 
-		// 월드 좌표계를 그리드 좌표계로 변환
-		int grid_x = (state.px - origin.position.x - 0.2 * cos(state.yaw)) / resolution;
-		int grid_y = (state.py - origin.position.y - 0.2 * sin(state.yaw)) / resolution;
-		int grid_block_size = block_size / resolution;
+	// 	// 월드 좌표계를 그리드 좌표계로 변환
+	// 	int grid_x = (state.px - origin.position.x - 0.2 * cos(state.yaw)) / resolution;
+	// 	int grid_y = (state.py - origin.position.y - 0.2 * sin(state.yaw)) / resolution;
+	// 	int grid_block_size = block_size / resolution;
 
-		// 회전 행렬을 계산
-		float cos_yaw = cos(state.yaw);
-		float sin_yaw = sin(state.yaw);
+	// 	// 회전 행렬을 계산
+	// 	float cos_yaw = cos(state.yaw);
+	// 	float sin_yaw = sin(state.yaw);
 
-		// 가변 크기 정사각형 블록의 기본 좌표들 (사각형의 중심을 기준으로)
-		std::vector<std::pair<int, int>> block_cells;
-		int half_block_size = grid_block_size / 2; // 정사각형의 반쪽 크기
+	// 	// 가변 크기 정사각형 블록의 기본 좌표들 (사각형의 중심을 기준으로)
+	// 	std::vector<std::pair<int, int>> block_cells;
+	// 	int half_block_size = grid_block_size / 2; // 정사각형의 반쪽 크기
 
-		for (int i = -half_block_size; i < half_block_size; ++i)
-		{
-			for (int j = -half_block_size; j < half_block_size; ++j)
-			{
-				block_cells.emplace_back(i, j);
-			}
-		}
+	// 	for (int i = -half_block_size; i < half_block_size; ++i)
+	// 	{
+	// 		for (int j = -half_block_size; j < half_block_size; ++j)
+	// 		{
+	// 			block_cells.emplace_back(i, j);
+	// 		}
+	// 	}
 
-		// 정사각형 블록을 회전시켜 그리드에 추가
-		for (const auto &cell : block_cells)
-		{
-			int local_x = cell.first;
-			int local_y = cell.second;
+	// 	// 정사각형 블록을 회전시켜 그리드에 추가
+	// 	for (const auto &cell : block_cells)
+	// 	{
+	// 		int local_x = cell.first;
+	// 		int local_y = cell.second;
 
-			// 회전 변환 적용
-			int rotated_x = round(cos_yaw * local_x - sin_yaw * local_y);
-			int rotated_y = round(sin_yaw * local_x + cos_yaw * local_y);
+	// 		// 회전 변환 적용
+	// 		int rotated_x = round(cos_yaw * local_x - sin_yaw * local_y);
+	// 		int rotated_y = round(sin_yaw * local_x + cos_yaw * local_y);
 
-			// Occupancy Grid 좌표에 추가
-			int cell_x = grid_x + rotated_x;
-			int cell_y = grid_y + rotated_y;
+	// 		// Occupancy Grid 좌표에 추가
+	// 		int cell_x = grid_x + rotated_x;
+	// 		int cell_y = grid_y + rotated_y;
 
-			// 그리드 내에서 유효한 좌표인지 확인
-			if (cell_x >= 0 && cell_x < width && cell_y >= 0 && cell_y < height)
-			{
-				// 점유율을 100(점유된 공간)으로 설정
-				modified_grid.data[cell_y * width + cell_x] = 100;
-			}
-		}
+	// 		// 그리드 내에서 유효한 좌표인지 확인
+	// 		if (cell_x >= 0 && cell_x < width && cell_y >= 0 && cell_y < height)
+	// 		{
+	// 			// 점유율을 100(점유된 공간)으로 설정
+	// 			modified_grid.data[cell_y * width + cell_x] = 100;
+	// 		}
+	// 	}
 
-		pub_map(modified_grid);
+	// 	pub_map(modified_grid);
 
-		// 수정된 Occupancy Grid 반환
-		return modified_grid;
-	}
+	// 	// 수정된 Occupancy Grid 반환
+	// 	return modified_grid;
+	// }
 
 	 bool check_colision(const sensor_msgs::msg::LaserScan& scan_data)
     {
@@ -1076,50 +1076,50 @@ public:
 		odom_pub->publish(odom_msg);
 	}
 
-	void pub_imu(
-		const control_msgs::msg::CarState &state,
-		const std::string &frame_id,
-		rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub)
-	{
-		sensor_msgs::msg::Imu imu_msg;
-		imu_msg.header.stamp = this->get_clock()->now();
-		imu_msg.header.frame_id = frame_id;
+	// void pub_imu(
+	// 	const control_msgs::msg::CarState &state,
+	// 	const std::string &frame_id,
+	// 	rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub)
+	// {
+	// 	sensor_msgs::msg::Imu imu_msg;
+	// 	imu_msg.header.stamp = this->get_clock()->now();
+	// 	imu_msg.header.frame_id = frame_id;
 
-		tf2::Quaternion q;
-		q.setRPY(0, 0, state.yaw);
-		imu_msg.orientation = tf2::toMsg(q);
-		imu_msg.orientation_covariance = { -1, 0, 0,
-										  0, 0, 0,
-										  0, 0, 0 };
+	// 	tf2::Quaternion q;
+	// 	q.setRPY(0, 0, state.yaw);
+	// 	imu_msg.orientation = tf2::toMsg(q);
+	// 	imu_msg.orientation_covariance = { -1, 0, 0,
+	// 									  0, 0, 0,
+	// 									  0, 0, 0 };
 
-		imu_msg.angular_velocity.x = 0.0;
-		imu_msg.angular_velocity.y = 0.0;
-		imu_msg.angular_velocity.z = state.omega;
-		imu_msg.angular_velocity_covariance = { -1, 0, 0,
-												0, 0, 0,
-												0, 0, 0 };
+	// 	imu_msg.angular_velocity.x = 0.0;
+	// 	imu_msg.angular_velocity.y = 0.0;
+	// 	imu_msg.angular_velocity.z = state.omega;
+	// 	imu_msg.angular_velocity_covariance = { -1, 0, 0,
+	// 											0, 0, 0,
+	// 											0, 0, 0 };
 
-		imu_msg.linear_acceleration.x = state.ax;
-		imu_msg.linear_acceleration.y = state.ay;
-		imu_msg.linear_acceleration.z = 0.0;
-		imu_msg.linear_acceleration_covariance = { -1, 0, 0,
-													0, 0, 0,
-													0, 0, 0 };
-		if(scan_noise_mode_)
-		{
-			imu_msg.orientation.x += gen_noise(0.01);
-			imu_msg.orientation.y += gen_noise(0.01);
-			imu_msg.orientation.z += gen_noise(0.01);
-			imu_msg.angular_velocity.x += gen_noise(0.01);
-			imu_msg.angular_velocity.y += gen_noise(0.01);
-			imu_msg.angular_velocity.z += gen_noise(0.01);
-			imu_msg.linear_acceleration.x += gen_noise(0.01);
-			imu_msg.linear_acceleration.y += gen_noise(0.01);
-			imu_msg.linear_acceleration.z += gen_noise(0.01);
-		}
-		imu_pub->publish(imu_msg);
+	// 	imu_msg.linear_acceleration.x = state.ax;
+	// 	imu_msg.linear_acceleration.y = state.ay;
+	// 	imu_msg.linear_acceleration.z = 0.0;
+	// 	imu_msg.linear_acceleration_covariance = { -1, 0, 0,
+	// 												0, 0, 0,
+	// 												0, 0, 0 };
+	// 	if(scan_noise_mode_)
+	// 	{
+	// 		imu_msg.orientation.x += gen_noise(0.01);
+	// 		imu_msg.orientation.y += gen_noise(0.01);
+	// 		imu_msg.orientation.z += gen_noise(0.01);
+	// 		imu_msg.angular_velocity.x += gen_noise(0.01);
+	// 		imu_msg.angular_velocity.y += gen_noise(0.01);
+	// 		imu_msg.angular_velocity.z += gen_noise(0.01);
+	// 		imu_msg.linear_acceleration.x += gen_noise(0.01);
+	// 		imu_msg.linear_acceleration.y += gen_noise(0.01);
+	// 		imu_msg.linear_acceleration.z += gen_noise(0.01);
+	// 	}
+	// 	imu_pub->publish(imu_msg);
 
-	}
+	// }
 
 
 	

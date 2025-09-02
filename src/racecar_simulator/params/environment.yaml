@@ -1,0 +1,10 @@
+map_publisher:
+  ros__parameters:
+    map_img_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/levinelobby_track.pgm"
+    map_yaml_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/levinelobby_track.yaml"
+    frame_id: "map"
+    obstacle_radius_m: 0.1
+
+    # pgm_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/c_track.pgm"
+    # yaml_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/c_track.yaml"
+

@@ -11,11 +11,6 @@ racecar_simulator:
     state_noise_mode: false              # add noise to the state
     scan_noise_mode: true               # add noise to the scan
 
-    pgm_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/levinelobby_track.pgm"
-    yaml_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/levinelobby_track.yaml"
-    # pgm_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/c_track.pgm"
-    # yaml_file_path: "/home/a/racecar_simulator/src/racecar_simulator/maps/c_track.yaml"
-
     # car1
     vehicle_model0: 0                   # 0: single track model, 1: pacejka tire model
     drive_topic0: "ackermann_cmd0"      # car1 control topic

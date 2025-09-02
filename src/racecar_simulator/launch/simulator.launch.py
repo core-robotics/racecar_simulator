@@ -15,6 +15,7 @@ def generate_launch_description():
     # Define the path to the rviz configuration file
     rviz_config_file = os.path.join(pkg_dir, "params", "simulator.rviz")
     simulation_config_file = os.path.join(pkg_dir, "params", "simulation.yaml")
+    env_config_file = os.path.join(pkg_dir, "params", "environment.yaml")
 
     # # Define the path to the robot description file
     car0_xacro_file = os.path.join(pkg_dir, "params", "racecar0.xacro")
@@ -61,6 +62,16 @@ def generate_launch_description():
                     # {"use_sim_time": True}
                     ],
     )
+    
+    map_publisher_node = Node(
+        package="racecar_simulator",
+        executable="map_publisher",
+        name="map_publisher",
+        output="screen",
+        parameters=[env_config_file,
+                    # {"use_sim_time": True}
+                    ],
+    )
 
     rviz_node = Node(
         package="rviz2",
@@ -73,6 +84,7 @@ def generate_launch_description():
 
     ld.add_action(rviz_node)
     ld.add_action(racecar_node)
+    ld.add_action(map_publisher_node)
     ld.add_action(robot0_state_publisher_node)
     ld.add_action(robot1_state_publisher_node)
     
