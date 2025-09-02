@@ -10,30 +10,30 @@ def generate_launch_description():
 
     pkg_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
-    # map_name = "Austin"
-    # map_name = "Melbourne"
-    # map_name = "Oschersleben"
-    map_name = "Shanghai"
-    # map_name = "Zandvoort"
-    # map_name = "BrandsHatch"
-    # map_name = "MexicoCity"
-    # map_name = "Silverstone"
-    # map_name = "Budapest"
-    # map_name = "IMS"
-    # map_name = "Montreal"
-    # map_name = "Sochi"
-    # map_name = "Catalunya"
-    # map_name = "Monza"
-    # map_name = "Sakhir"
-    # map_name = "Spa"
-    # map_name = "MoscowRaceway"
-    # map_name = "SaoPaulo"
-    # map_name = "Spielberg"
-    # map_name = "Hockenheim"
-    # map_name = "LICENSE"
-    # map_name = "Nuerburgring"
-    # map_name = "Sepang"
-    # map_name = "YasMarina"
+    map_name = "Austin"
+    # 1. Austin
+    # 2. Melbourne
+    # 3. Oschersleben
+    # 4. Shanghai
+    # 5. Zandvoort
+    # 6. BrandsHatch
+    # 7. MexicoCity
+    # 8. Silverstone
+    # 9. Budapest
+    # 10. IMS
+    # 11. Montreal
+    # 12. Sochi
+    # 13. Catalunya
+    # 14. Monza
+    # 15. Sakhir
+    # 16. Spa
+    # 17. MoscowRaceway
+    # 18. SaoPaulo
+    # 19. Spielberg
+    # 20. Hockenheim
+    # 21. Nuerburgring
+    # 22. Sepang
+    # 23. YasMarina
 
     rviz_config_file = os.path.join(pkg_dir, "params", "simulator.rviz")
     simulation_config_file = os.path.join(pkg_dir, "params", "simulation.yaml")
