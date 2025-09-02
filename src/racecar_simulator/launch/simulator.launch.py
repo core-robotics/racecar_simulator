@@ -10,9 +10,39 @@ def generate_launch_description():
 
     pkg_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
+    # map_name = "Austin"
+    # map_name = "Melbourne"
+    # map_name = "Oschersleben"
+    map_name = "Shanghai"
+    # map_name = "Zandvoort"
+    # map_name = "BrandsHatch"
+    # map_name = "MexicoCity"
+    # map_name = "Silverstone"
+    # map_name = "Budapest"
+    # map_name = "IMS"
+    # map_name = "Montreal"
+    # map_name = "Sochi"
+    # map_name = "Catalunya"
+    # map_name = "Monza"
+    # map_name = "Sakhir"
+    # map_name = "Spa"
+    # map_name = "MoscowRaceway"
+    # map_name = "SaoPaulo"
+    # map_name = "Spielberg"
+    # map_name = "Hockenheim"
+    # map_name = "LICENSE"
+    # map_name = "Nuerburgring"
+    # map_name = "Sepang"
+    # map_name = "YasMarina"
+
     rviz_config_file = os.path.join(pkg_dir, "params", "simulator.rviz")
     simulation_config_file = os.path.join(pkg_dir, "params", "simulation.yaml")
     env_config_file = os.path.join(pkg_dir, "params", "environment.yaml")
+    map_folder = os.path.join(pkg_dir, "maps/f1tenth_racetracks")
+    map_img = os.path.join(map_folder, map_name, map_name + "_map.png")
+    map_yaml = os.path.join(map_folder, map_name, map_name + "_map.yaml")
+    map_center = os.path.join(map_folder, map_name, map_name + "_centerline.csv")
+
 
     car0_xacro_file = os.path.join(pkg_dir, "params", "racecar0.xacro")
     car1_xacro_file = os.path.join(pkg_dir, "params", "racecar1.xacro")
@@ -66,8 +96,9 @@ def generate_launch_description():
         name="map_publisher",
         output="screen",
         parameters=[
-            env_config_file,
-            # {"use_sim_time": True},  
+            {"map_img_file_path": map_img},
+            {"map_yaml_file_path": map_yaml},
+            {"race_line_file_path": map_center},
         ],
     )
 

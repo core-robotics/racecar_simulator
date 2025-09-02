@@ -72,7 +72,9 @@
         "cinttypes": "cpp",
         "typeindex": "cpp",
         "typeinfo": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "any": "cpp",
+        "regex": "cpp"
     },
     "cmake.sourceDirectory": "/home/a/racecar_simulator/src/racecar_simulator",
     "python.autoComplete.extraPaths": [

@@ -16,16 +16,14 @@
 #include "control_msgs/msg/car_state.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
 #include "nav_msgs/msg/odometry.hpp"
+#include "nav_msgs/msg/path.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
 #include "sensor_msgs/msg/imu.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "racecar_simulator/scan_simulator_2d.hpp"
 
-
 using namespace std::chrono_literals; // Use chrono literals for timing
 using namespace racecar_simulator;
-
-
 
 class RacecarSimulator : public rclcpp::Node
 {
@@ -39,7 +37,8 @@ private:
 	rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive0_sub_;
 	rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive1_sub_;
 	rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
-	
+	rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr center_path_sub_;
+
 	rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan0_pub_;
 	rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan1_pub_;
 	rclcpp::Publisher<control_msgs::msg::CarState>::SharedPtr state0_pub_;
@@ -51,7 +50,6 @@ private:
 	rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom1_pub_;
 	// rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu0_pub_;
 	// rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu1_pub_;
-
 
 	control_msgs::msg::CarState car_state0_, car_state1_;
 
@@ -83,7 +81,6 @@ private:
 	std::vector<float> scan_data_float0_, scan_data_float1_;
 	sensor_msgs::msg::LaserScan scan_msg_data0_, scan_msg_data1_;
 
-
 	bool map_exists_ = false;
 	nav_msgs::msg::OccupancyGrid original_map_;
 	nav_msgs::msg::OccupancyGrid current_map_;
@@ -93,9 +90,13 @@ private:
 
 	std::vector<std::pair<float, float>> scan_coordinates;
 	float x_min = -0.32;
-    float x_max = 0.08;
-    float y_min = -0.2;
-    float y_max = 0.2;
+	float x_max = 0.08;
+	float y_min = -0.2;
+	float y_max = 0.2;
+
+	bool receive_start_pose_ = false;
+	bool is_pose_init_ = false;
+	control_msgs::msg::CarState init_car_state0_;
 
 public:
 	RacecarSimulator()
@@ -114,7 +115,6 @@ public:
 		this->declare_parameter("state_noise_mode", false);
 		this->declare_parameter("scan_noise_mode", false);
 
-
 		this->get_parameter("simulator_frequency", simulator_frequency_);
 		this->get_parameter("pub_frequency", pub_frequency_);
 		this->get_parameter("scan_beams", scan_beams_);
@@ -125,9 +125,8 @@ public:
 		this->get_parameter("state_noise_mode", state_noise_mode_);
 		this->get_parameter("scan_noise_mode", scan_noise_mode_);
 
-
 		// Car0 parameters
-		this->declare_parameter("vehicle_model0",1);
+		this->declare_parameter("vehicle_model0", 1);
 		this->declare_parameter("drive_topic0", "ackermann_cmd0");
 		this->declare_parameter("state_topic0", "state0");
 		this->declare_parameter("scan_topic0", "scan0");
@@ -170,7 +169,7 @@ public:
 		this->get_parameter("jerk_max0", car0_params_.jerk_max);
 
 		// Car1 parameters
-		this->declare_parameter("vehicle_model1",1);
+		this->declare_parameter("vehicle_model1", 1);
 		this->declare_parameter("drive_topic1", "ackermann_cmd1");
 		this->declare_parameter("state_topic1", "state1");
 		this->declare_parameter("scan_topic1", "scan1");
@@ -242,6 +241,9 @@ public:
 		map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
 			"map", rclcpp::QoS(rclcpp::KeepLast(1)).reliable(), std::bind(&RacecarSimulator::mapCallback, this, std::placeholders::_1));
 
+		center_path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
+			"center_path", rclcpp::QoS(rclcpp::KeepLast(1)).reliable(), std::bind(&RacecarSimulator::centerPathCallback, this, std::placeholders::_1));
+
 		scan0_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic0_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
 		scan1_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic1_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
 		state0_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic0_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
@@ -252,8 +254,6 @@ public:
 		odom1_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom1", rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
 		scan_simulator_ = ScanSimulator2D(scan_beams_, scan_fov_, scan_std_dev_);
 
-
-
 		// Initialize simulator
 		RCLCPP_INFO(this->get_logger(), "\nRacecar simulator initialized");
 		RCLCPP_INFO(this->get_logger(), "\nSimulator frequency: %f Hz", simulator_frequency_);
@@ -261,10 +261,10 @@ public:
 		// RCLCPP_INFO(this->get_logger(), "\nvehicle_model0: %d", vehicle_model0_);
 		// RCLCPP_INFO(this->get_logger(), "\nvehicle_model1: %d", vehicle_model1_);
 
-		//levinelobby
-		car_state0_.px = 0.688;
-		car_state0_.py = -0.906;
-		car_state0_.yaw = -70 * M_PI / 180;
+		// //levinelobby
+		// car_state0_.px = 0.688;
+		// car_state0_.py = -0.906;
+		// car_state0_.yaw = -70 * M_PI / 180;
 	}
 
 	// Simulator loop for updating car states
@@ -281,9 +281,21 @@ public:
 	// Publisher loop for broadcasting car states
 	void pubLoop()
 	{
+
+		if (receive_start_pose_==true&&is_pose_init_ == false)
+		{
+			car_state0_.px = init_car_state0_.px;
+			car_state0_.py = init_car_state0_.py;
+			car_state0_.yaw = init_car_state0_.yaw;
+			car_state1_.px = 100;
+			car_state1_.py = 100;
+			car_state1_.yaw = 0;
+			is_pose_init_ = true;
+		}
+
 		current_map_ = original_map_;
-		pub_scan(car_state0_, "laser_model0", scan_data_float0_, scan0_pub_,scan_msg_data0_);
-		pub_scan(car_state1_, "laser_model1", scan_data_float1_, scan1_pub_,scan_msg_data1_);
+		pub_scan(car_state0_, "laser_model0", scan_data_float0_, scan0_pub_, scan_msg_data0_);
+		pub_scan(car_state1_, "laser_model1", scan_data_float1_, scan1_pub_, scan_msg_data1_);
 		state0Publisher();
 		state1Publisher();
 		pub_colision(scan_msg_data0_, collision0_pub_);
@@ -340,32 +352,31 @@ public:
 
 	void updateState()
 	{
-		if(vehicle_model0_ == 0)
+		if (vehicle_model0_ == 0)
 		{
 			car_state0_ = updateStateSingleTrack(car_state0_, car0_params_);
 		}
-		else if(vehicle_model0_ == 1)
+		else if (vehicle_model0_ == 1)
 		{
 			car_state0_ = updateStatePacejka(car_state0_, car0_params_);
 		}
 		else
 		{
-			std::cout<<"Invalid vehicle model for car0"<<std::endl;
+			std::cout << "Invalid vehicle model for car0" << std::endl;
 		}
 
-		if(vehicle_model1_ == 0)
+		if (vehicle_model1_ == 0)
 		{
 			car_state1_ = updateStateSingleTrack(car_state1_, car1_params_);
 		}
-		else if(vehicle_model1_ == 1)
+		else if (vehicle_model1_ == 1)
 		{
 			car_state1_ = updateStatePacejka(car_state1_, car1_params_);
 		}
 		else
 		{
-			std::cout<<"Invalid vehicle model for car1"<<std::endl;
+			std::cout << "Invalid vehicle model for car1" << std::endl;
 		}
-
 	}
 
 	// Callback for initial pose of car0
@@ -538,7 +549,7 @@ public:
 	}
 	control_msgs::msg::CarState updateStateSingleTrack(control_msgs::msg::CarState &start, CarParams p)
 	{
-		if (abs(start.v) <0.1)
+		if (abs(start.v) < 0.1)
 		{
 			return update_k(start, start.accel, start.steer_vel, p, 1.0 / simulator_frequency_);
 		}
@@ -555,25 +566,24 @@ public:
 		// double steer_angle_dot = start.steer_vel;
 		// double theta_dot = start.omega;123
 
-		double rear_val=g*p.l_r-start.accel*h_cg;
-		double front_val=g*p.l_f+start.accel*h_cg;
+		double rear_val = g * p.l_r - start.accel * h_cg;
+		double front_val = g * p.l_f + start.accel * h_cg;
 
 		// double vel_ratio, first_term;
 
 		// vel_ratio = start.omega / start.v;
 		// first_term = friction_coeff / (start.v * (p.l_f + p.l_r));
 
-		double omega_dot=
-		  (friction_coeff * p.mass / (p.I_z * (p.l_f+p.l_r))) *
-                      (p.l_f * cs_f * start.steer * (rear_val) + start.slip_angle * (p.l_r * cs_r * (front_val)-p.l_f * cs_f * (rear_val)) -
-                       (start.omega / start.v) * (pow(p.l_f, 2) * cs_f * (rear_val) + pow(p.l_r, 2) * cs_r * (front_val))); 
+		double omega_dot =
+			(friction_coeff * p.mass / (p.I_z * (p.l_f + p.l_r))) *
+			(p.l_f * cs_f * start.steer * (rear_val) + start.slip_angle * (p.l_r * cs_r * (front_val)-p.l_f * cs_f * (rear_val)) -
+			 (start.omega / start.v) * (pow(p.l_f, 2) * cs_f * (rear_val) + pow(p.l_r, 2) * cs_r * (front_val)));
 
-		double slip_angle_dot=
-		(friction_coeff / (start.v * (p.l_r + p.l_f))) *
-                          (cs_f * start.steer * rear_val - start.slip_angle * (cs_r * front_val + cs_f * rear_val) +
-                           (start.omega / start.v) * (cs_r * p.l_r * front_val - cs_f * p.l_f * rear_val)) -
-                      start.omega; 
-
+		double slip_angle_dot =
+			(friction_coeff / (start.v * (p.l_r + p.l_f))) *
+				(cs_f * start.steer * rear_val - start.slip_angle * (cs_r * front_val + cs_f * rear_val) +
+				 (start.omega / start.v) * (cs_r * p.l_r * front_val - cs_f * p.l_f * rear_val)) -
+			start.omega;
 
 		control_msgs::msg::CarState end;
 		end.px = start.px + x_dot * dt;
@@ -759,6 +769,26 @@ public:
 		map_exists_ = true;
 	}
 
+	// Callback for center path
+	void centerPathCallback(const nav_msgs::msg::Path::SharedPtr msg)
+	{
+		tf2::Quaternion q(
+			msg->poses[1].pose.orientation.x,
+			msg->poses[1].pose.orientation.y,
+			msg->poses[1].pose.orientation.z,
+			msg->poses[1].pose.orientation.w);
+		tf2::Matrix3x3 m(q);
+		double roll, pitch, yaw;
+		m.getRPY(roll, pitch, yaw);
+
+		init_car_state0_.px = msg->poses[0].pose.position.x;
+		init_car_state0_.py = msg->poses[0].pose.position.y;
+		init_car_state0_.yaw = yaw;
+
+		// is_pose_init_ = true;
+		receive_start_pose_ = true;
+	}
+
 	// Publish scan data
 	void pub_scan(const control_msgs::msg::CarState &state,
 				  const std::string &scan_frame,
@@ -810,7 +840,7 @@ public:
 		scan_msg.time_increment = 0.0;
 		scan_msg.scan_time = 1.0 / pub_frequency_;
 
-		scan_msg_data=scan_msg;
+		scan_msg_data = scan_msg;
 		scan_pub->publish(scan_msg);
 	}
 
@@ -824,27 +854,25 @@ public:
 		return value;
 	}
 
-	 bool check_collision(const sensor_msgs::msg::LaserScan& scan_data)
-    {
-        scan_coordinates.clear();
-        for (size_t i = 0; i < scan_data.ranges.size(); i++)
-        {
-            float angle = scan_data.angle_min + i * scan_data.angle_increment;
-            float x = scan_data.ranges[i] * cos(angle);
-            float y = scan_data.ranges[i] * sin(angle);
-            
-            
-            if (x > x_min && x < x_max && y > y_min && y < y_max)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
+	bool check_collision(const sensor_msgs::msg::LaserScan &scan_data)
+	{
+		scan_coordinates.clear();
+		for (size_t i = 0; i < scan_data.ranges.size(); i++)
+		{
+			float angle = scan_data.angle_min + i * scan_data.angle_increment;
+			float x = scan_data.ranges[i] * cos(angle);
+			float y = scan_data.ranges[i] * sin(angle);
 
+			if (x > x_min && x < x_max && y > y_min && y < y_max)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
 
 	void pub_colision(
-		const sensor_msgs::msg::LaserScan& scan_data,
+		const sensor_msgs::msg::LaserScan &scan_data,
 		rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr collision_pub)
 	{
 		std_msgs::msg::Bool collision_msg;
@@ -868,8 +896,7 @@ public:
 		odom_msg.pose.pose.position.z = 0.0;
 		tf2::Quaternion q;
 		q.setRPY(0, 0, state.yaw);
-		odom_msg.pose.pose.orientation=tf2::toMsg(q); 
-
+		odom_msg.pose.pose.orientation = tf2::toMsg(q);
 
 		odom_msg.twist.twist.linear.x = state.v;
 		odom_msg.twist.twist.linear.y = 0.0;
