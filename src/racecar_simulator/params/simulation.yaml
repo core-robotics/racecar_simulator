@@ -2,7 +2,7 @@ racecar_simulator:
   ros__parameters:
     # General parameters
     simulator_frequency: 1000.0         # Hz
-    pub_frequency: 100.0                # Hz.
+    pub_frequency: 100.0                # Hz
     scan_beams: 1080                    # number of beams in the lidar scan
     scan_field_of_view: 4.71238898      # rad    270 degrees
     scan_std_dev: 0.01                  # m      standard deviation of the scan noise
