@@ -7,19 +7,19 @@ racecar_simulator:
     scan_field_of_view: 4.71238898      # rad    270 degrees
     scan_std_dev: 0.01                  # m      standard deviation of the scan noise
     map_free_threshold: 0.2             # m
-    detect_car_mode: false               # detect other cars
-    state_noise_mode: false              # add noise to the state
-    scan_noise_mode: false               # add noise to the scan
-    # use_sim_time: true                   # use simulation time
+    detect_car_mode: false              # detect other cars
+    state_noise_mode: false             # add noise to the state
+    scan_noise_mode: false              # add noise to the scan
+    # use_sim_time: true                # use simulation time
 
     # car1
     vehicle_model0: 0                   # 0: single track model, 1: pacejka tire model
     drive_topic0: "ackermann_cmd0"      # car1 control topic
     state_topic0: "state0"              # car1 state topic
     mass0: 3.5                          # kg
-    l_f0: 0.17145                       # m       distance from center of mass to front axle
-    l_r0: 0.17145                       # m       distance from center of mass to rear axle
-    I_z0: 0.04712                       # kg*m^2  moment of inertia about z-axis
+    l_f0: 0.17                          # m       distance from center of mass to front axle
+    l_r0: 0.17                          # m       distance from center of mass to rear axle
+    I_z0: 0.07                          # kg*m^2  moment of inertia about z-axis
     B_f0: 1.5                           # Pacejka tire model parameters
     C_f0: 1.5                           # D*sin(C*arctan(B*a))
     D_f0: 30.0
@@ -28,7 +28,7 @@ racecar_simulator:
     D_r0: 30.0
     steer_max0: 4.0                     # rad     max steering angle
     steer_vel_max0: 4.0                 # rad/s   max steering velocity
-    speed_max0: 10.0                    # m/s     max speed
+    speed_max0: 20.0                    # m/s     max speed
     accel_max0: 40.0                    # m/s^2   max acceleration
     decel_max0: 40.0                    # m/s^2   max deceleration
     jerk_max0: 100.0                    # m/s^3   max jerk
@@ -38,9 +38,9 @@ racecar_simulator:
     drive_topic1: "ackermann_cmd1"      # car2 control topic
     state_topic1: "state1"              # car2 state topic
     mass1: 3.5                          # kg
-    l_f1: 0.17145                       # m
-    l_r1: 0.17145                       # m
-    I_z1: 0.04712                       # kg*m^2
+    l_f1: 0.17                          # m
+    l_r1: 0.17                          # m
+    I_z1: 0.07                          # kg*m^2
     B_f1: 1.5                           # Pacejka tire model parameters
     C_f1: 1.5                           # D*sin(C*arctan(B*a))
     D_f1: 30.0
@@ -49,7 +49,7 @@ racecar_simulator:
     D_r1: 30.0
     steer_max1: 4.0                     # rad
     steer_vel_max1: 4.0                 # rad/s
-    speed_max1: 10.0                    # m/s
+    speed_max1: 20.0                    # m/s
     accel_max1: 40.0                    # m/s^2
     decel_max1: 40.0                    # m/s^2
     jerk_max1: 100.0                    # m/s^3

@@ -898,8 +898,8 @@ public:
 		q.setRPY(0, 0, state.yaw);
 		odom_msg.pose.pose.orientation = tf2::toMsg(q);
 
-		odom_msg.twist.twist.linear.x = state.v;
-		odom_msg.twist.twist.linear.y = 0.0;
+		odom_msg.twist.twist.linear.x = state.vx;
+		odom_msg.twist.twist.linear.y = state.vy;
 		odom_msg.twist.twist.linear.z = 0.0;
 		odom_msg.twist.twist.angular.x = 0.0;
 		odom_msg.twist.twist.angular.y = 0.0;
