@@ -15,6 +15,7 @@
   <exec_depend>ackermann_msgs</exec_depend>
   <exec_depend>control_msgs</exec_depend>
   <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>tf2</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

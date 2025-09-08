@@ -11,6 +11,7 @@ find_package(ament_cmake REQUIRED)
 find_package(control_msgs REQUIRED)
 find_package(ackermann_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(tf2 REQUIRED)
 
 add_executable(pure_pursuit src/pure_pursuit.cpp)
 
@@ -19,6 +20,7 @@ ament_target_dependencies(pure_pursuit
   control_msgs
   ackermann_msgs
   nav_msgs
+  tf2
 )
 
 install(TARGETS

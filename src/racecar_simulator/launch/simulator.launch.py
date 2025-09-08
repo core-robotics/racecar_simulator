@@ -8,7 +8,8 @@ def generate_launch_description():
 
     ld = LaunchDescription()
 
-    pkg_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+    pkg_dir = '/home/a/racecar_simulator/src/racecar_simulator/'
+
 
     map_name = "Austin"
     # 1. Austin
