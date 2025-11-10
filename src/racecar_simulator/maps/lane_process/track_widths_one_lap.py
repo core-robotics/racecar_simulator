@@ -236,6 +236,8 @@ def show_widths(w_left_raw: np.ndarray, w_right_raw: np.ndarray, w_left: np.ndar
     plt.tight_layout()
     plt.show()
 
+
+
 # ---------------- Main ----------------
 
 def main():

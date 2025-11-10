@@ -5,8 +5,8 @@ race_stat:
     path_topic: "center_path"
 
     text_frame: "map"
-    text_anchor_x: 4.0
-    text_anchor_y: 3.0
+    text_anchor_x: 7.0
+    text_anchor_y: 2.0
     text_scale: 1.00
 
     start_on_first_cross: true
