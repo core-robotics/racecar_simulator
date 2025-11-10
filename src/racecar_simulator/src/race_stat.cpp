@@ -1,5 +1,7 @@
-// ROS2 lap stats node with anti-flicker markers and robust S-projection lap detection
-// Timing starts only after the first S/F gate crossing
+// ROS2 lap stats node with robust S/F crossing and safe debounce
+// - Starts timing after first valid S/F crossing
+// - Direction inferred online; bidirectional handling
+// - Debounce uses lap-start time, and last_cross_time updates only on accepted crossings
 
 #include <rclcpp/rclcpp.hpp>
 #include <builtin_interfaces/msg/time.hpp>
@@ -24,18 +26,19 @@ class RaceStatsNode : public rclcpp::Node {
 public:
   RaceStatsNode() : Node("race_stats_node") {
     // Parameters
-    odom_topic_         = declare_parameter<std::string>("odom_topic", "odom0");
-    collision_topic_    = declare_parameter<std::string>("collision_topic", "collision0");
-    path_topic_         = declare_parameter<std::string>("path_topic", "center_path");
-    text_frame_         = declare_parameter<std::string>("text_frame", "base_link0"); // HUD frame
-    fixed_frame_        = declare_parameter<std::string>("fixed_frame", "map");       // RViz Fixed Frame
-    text_anchor_x_      = declare_parameter<double>("text_anchor_x", 0.0);
-    text_anchor_y_      = declare_parameter<double>("text_anchor_y", 0.0);
-    text_scale_         = declare_parameter<double>("text_scale", 0.25);
-    min_lap_time_       = declare_parameter<double>("min_lap_time", 3.0);
-    update_rate_hz_     = declare_parameter<double>("update_rate_hz", 10.0);
-    start_on_first_cross_= declare_parameter<bool>("start_on_first_cross", true);
-    one_sided_forward_  = declare_parameter<bool>("one_sided_forward", true); // unused
+    odom_topic_           = declare_parameter<std::string>("odom_topic", "odom0");
+    collision_topic_      = declare_parameter<std::string>("collision_topic", "collision0");
+    path_topic_           = declare_parameter<std::string>("path_topic", "center_path");
+    text_frame_           = declare_parameter<std::string>("text_frame", "map");
+    fixed_frame_          = declare_parameter<std::string>("fixed_frame", "map");
+    text_anchor_x_        = declare_parameter<double>("text_anchor_x", 0.0);
+    text_anchor_y_        = declare_parameter<double>("text_anchor_y", 0.0);
+    text_scale_           = declare_parameter<double>("text_scale", 0.25);
+    min_lap_time_         = declare_parameter<double>("min_lap_time", 3.0);
+    update_rate_hz_       = declare_parameter<double>("update_rate_hz", 10.0);
+    start_on_first_cross_ = declare_parameter<bool>("start_on_first_cross", true);
+    one_sided_forward_    = declare_parameter<bool>("one_sided_forward", true);
+    cross_eps_            = declare_parameter<double>("sf_cross_epsilon", 0.15);
 
     // QoS
     auto r_qos   = rclcpp::QoS(rclcpp::KeepLast(1)).reliable();
@@ -71,7 +74,8 @@ private:
   double min_lap_time_{3.0};
   double update_rate_hz_{10.0};
   bool start_on_first_cross_{true};
-  bool one_sided_forward_{true}; // unused
+  bool one_sided_forward_{true};
+  double cross_eps_{0.15};
 
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr collision_sub_;
@@ -95,10 +99,11 @@ private:
   bool have_path_{false};
   int last_seg_hint_{0};
 
-  // RViz S/F line params (from node 0->1)
+  // S/F line params (from node 0->1)
   bool line_published_{false};
   double p0x_{0.0}, p0y_{0.0};
-  double tx_{0.0}, ty_{1.0};
+  double tx_{0.0}, ty_{1.0};   // line direction (perp to tangent)
+  double n0x_{1.0}, n0y_{0.0}; // line normal (path tangent at node 0)
 
   // Stats
   int lap_count_{0};
@@ -112,12 +117,20 @@ private:
   double best_lap_time_sec_{std::numeric_limits<double>::infinity()};
   double current_lap_time_sec_{0.0};
 
-  // Gate thresholds (set after track_len_)
+  // Gate thresholds
   double gate_low_{0.0}, gate_high_{0.0};
 
   // s history
   bool have_prev_s_{false};
   double prev_s_{0.0};
+
+  // signed-distance history
+  bool have_prev_sd_{false};
+  double prev_sd_{0.0};
+
+  // online direction estimate (+1 increasing s, -1 decreasing s)
+  double ds_ema_{0.0};
+  int dir_sign_{+1};
 
   // HUD text dedup
   std::string last_text_;
@@ -158,20 +171,27 @@ private:
     }
     track_len_ = s_node_[N];
 
-    // S/F line orientation (node 0 tangent rotated 90°)
+    // S/F line at node 0
     p0x_ = px_[0]; p0y_ = py_[0];
     const double L01 = norm(seg_dx_[0], seg_dy_[0]);
-    tx_ = (L01>1e-6) ? -seg_dy_[0]/L01 : 0.0;
-    ty_ = (L01>1e-6) ?  seg_dx_[0]/L01 : 1.0;
+    tx_  = (L01>1e-6) ? -seg_dy_[0]/L01 : 0.0;
+    ty_  = (L01>1e-6) ?  seg_dx_[0]/L01 : 1.0;
+    n0x_ = (L01>1e-6) ?  seg_dx_[0]/L01 : 1.0;
+    n0y_ = (L01>1e-6) ?  seg_dy_[0]/L01 : 0.0;
 
-    // Hysteresis gate
+    // s-gate (backup)
     gate_low_  = 0.2 * track_len_;
     gate_high_ = 0.8 * track_len_;
 
     have_path_ = true;
     have_prev_s_ = false;
+    have_prev_sd_ = false;
     line_published_ = false;
     last_seg_hint_ = 0;
+
+    // reset direction estimate
+    ds_ema_ = 0.0;
+    dir_sign_ = +1;
   }
 
   // Project (x,y) to arc-length s in [0, L)
@@ -209,6 +229,11 @@ private:
     return (s >= track_len_) ? (s - track_len_) : s;
   }
 
+  // Signed distance to S/F line (positive in +tangent direction)
+  inline double signedDistSF(double x, double y) const {
+    return (x - p0x_) * n0x_ + (y - p0y_) * n0y_;
+  }
+
   void onOdom(const nav_msgs::msg::Odometry::SharedPtr msg) {
     const double x = msg->pose.pose.position.x;
     const double y = msg->pose.pose.position.y;
@@ -218,44 +243,79 @@ private:
     }
     if (!have_path_) return;
 
-    const double s = projectToPath(x, y);
+    const double s  = projectToPath(x, y);
+    const double sd = signedDistSF(x, y);
 
-    if (!have_prev_s_) {
-      prev_s_ = s;
-      have_prev_s_ = true; // do not start timer here
-      return;
+    // First samples
+    if (!have_prev_s_)  { prev_s_ = s;  have_prev_s_  = true; }
+    if (!have_prev_sd_) { prev_sd_ = sd; have_prev_sd_ = true; }
+
+    // Wrap-aware ds for direction
+    double ds_raw = s - prev_s_;
+    if (ds_raw >  0.5 * track_len_) ds_raw -= track_len_;
+    if (ds_raw < -0.5 * track_len_) ds_raw += track_len_;
+
+    // EMA for direction estimate
+    ds_ema_ = 0.9 * ds_ema_ + 0.1 * ds_raw;
+    dir_sign_ = (ds_ema_ >= 0.0) ? +1 : -1;
+
+    // s-gate crossings (both ways)
+    const bool gate_inc = (prev_s_ > gate_high_) && (s < gate_low_);
+    const bool gate_dec = (prev_s_ < gate_low_)  && (s > gate_high_);
+
+    // wrap crossings (both ways)
+    const bool wrap_inc = (s - prev_s_) < -0.5 * track_len_;
+    const bool wrap_dec = (s - prev_s_) >  +0.5 * track_len_;
+
+    // signed-distance with hysteresis; forward depends on dir_sign_
+    bool sd_fwd = false, sd_bwd = false;
+    if (dir_sign_ >= 0) {
+      sd_fwd = (prev_sd_ <= -cross_eps_) && (sd >=  cross_eps_);
+      sd_bwd = (prev_sd_ >=  cross_eps_) && (sd <= -cross_eps_);
+    } else { // reverse driving flips roles
+      sd_fwd = (prev_sd_ >=  cross_eps_) && (sd <= -cross_eps_);
+      sd_bwd = (prev_sd_ <= -cross_eps_) && (sd >=  cross_eps_);
     }
 
-    // Gate crossing: hysteresis or wrap-based detection
-    const bool crossed_gate = (prev_s_ > gate_high_) && (s < gate_low_);
-    const double ds = s - prev_s_;
-    const bool crossed_wrap_forward = (ds < -0.5 * track_len_); // jumped from ~L→0
-    const bool crossed = crossed_gate || crossed_wrap_forward;
+    const bool crossed_gate = gate_inc || gate_dec;
+    const bool crossed_wrap = wrap_inc || wrap_dec;
+    const bool crossed_line = one_sided_forward_ ? sd_fwd : (sd_fwd || sd_bwd);
+
+    const bool crossed = crossed_gate || crossed_wrap || crossed_line;
 
     if (crossed) {
       const rclcpp::Time now_t = this->get_clock()->now();
-      const double since_last = last_cross_time_.nanoseconds() > 0
-                                ? (now_t - last_cross_time_).seconds()
-                                : std::numeric_limits<double>::infinity();
 
+      // Debounce by lap-start, not by last-cross (prevents “fake early cross” from blocking the next real one)
+      const double since_lap_start = lap_start_time_.nanoseconds() > 0
+                                     ? (now_t - lap_start_time_).seconds()
+                                     : std::numeric_limits<double>::infinity();
+
+      bool accepted = false;
       if (running_lap_) {
-        if (since_last > min_lap_time_) {
+        if (since_lap_start > min_lap_time_) {
           const double lap_time = (now_t - lap_start_time_).seconds();
           last_lap_time_sec_ = lap_time;
           if (lap_time < best_lap_time_sec_) best_lap_time_sec_ = lap_time;
           lap_count_++;
-          lap_start_time_ = now_t; // next lap
+          lap_start_time_ = now_t;
+          accepted = true;
         }
       } else if (start_on_first_cross_) {
-        running_lap_ = true; // first crossing starts timing
+        running_lap_ = true;
         lap_start_time_ = now_t;
+        accepted = true;
       }
-      last_cross_time_ = now_t;
+
+      // Only update last_cross_time_ when a crossing is accepted
+      if (accepted) {
+        last_cross_time_ = now_t;
+      }
     }
 
-    prev_s_ = s;
+    prev_s_  = s;
+    prev_sd_ = sd;
   }
-
 
   void onCollision(const std_msgs::msg::Bool::SharedPtr msg) {
     const bool coll = msg->data;
@@ -298,10 +358,10 @@ private:
   }
 
   void publishMarkers() {
-    builtin_interfaces::msg::Time stamp{}; // latest TF
+    builtin_interfaces::msg::Time stamp{};
     visualization_msgs::msg::MarkerArray arr;
 
-    // HUD text (infinite lifetime)
+    // HUD text
     std::ostringstream oss; oss.setf(std::ios::fixed); oss.precision(3);
     oss << "Lap: " << lap_count_ << "\n"
         << "Current: " << (running_lap_ ? current_lap_time_sec_ : 0.0) << " s\n"
@@ -329,7 +389,7 @@ private:
     arr.markers.push_back(text);
     last_text_ = new_text;
 
-    // S/F line (fixed frame) — publish once after path is known
+    // S/F line
     if (have_path_) {
       visualization_msgs::msg::Marker line;
       line.header.frame_id = fixed_frame_;
