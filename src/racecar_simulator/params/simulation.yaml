@@ -1,8 +1,9 @@
 racecar_simulator:
   ros__parameters:
     # General parameters
-    simulator_frequency: 1000.0         # Hz
-    pub_frequency: 100.0                # Hz
+    use_car1: false                     # simulate car1
+    simulator_frequency: 100.0         # Hz
+    pub_frequency: 50.0                # Hz
     scan_beams: 1080                    # number of beams in the lidar scan
     scan_field_of_view: 4.71238898      # rad    270 degrees
     scan_std_dev: 0.01                  # m      standard deviation of the scan noise
@@ -13,7 +14,7 @@ racecar_simulator:
     # use_sim_time: true                # use simulation time
 
     # car1
-    vehicle_model0: 0                   # 0: single track model, 1: pacejka tire model
+    vehicle_model0: 1                   # 0: single track model, 1: pacejka tire model
     drive_topic0: "ackermann_cmd0"      # car1 control topic
     state_topic0: "state0"              # car1 state topic
     mass0: 3.5                          # kg

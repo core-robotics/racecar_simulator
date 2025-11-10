@@ -25,23 +25,28 @@ public:
     drive_topic_       = declare_parameter<std::string>("drive_topic", "ackermann_cmd0");
 
     // Pubs/Subs
+
+    auto map_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
+	  auto pub_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable();
+    auto sub_qos   = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort();
+    
     drive_pub_ = create_publisher<ackermann_msgs::msg::AckermannDriveStamped>(
-        drive_topic_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
+        drive_topic_, pub_qos);
 
     sub_center_ = create_subscription<nav_msgs::msg::Path>(
-        center_path_topic_, rclcpp::QoS(1).reliable(),
+        center_path_topic_, map_qos,
         [this](nav_msgs::msg::Path::SharedPtr msg){ center_path_ = *msg; });
 
     sub_left_ = create_subscription<nav_msgs::msg::Path>(
-        left_path_topic_, rclcpp::QoS(1).reliable(),
+        left_path_topic_, map_qos,
         [this](nav_msgs::msg::Path::SharedPtr msg){ left_path_ = *msg; });
 
     sub_right_ = create_subscription<nav_msgs::msg::Path>(
-        right_path_topic_, rclcpp::QoS(1).reliable(),
+        right_path_topic_, map_qos,
         [this](nav_msgs::msg::Path::SharedPtr msg){ right_path_ = *msg; });
 
     sub_odom_ = create_subscription<nav_msgs::msg::Odometry>(
-        odom_topic_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable(),
+        odom_topic_, sub_qos,
         [this](nav_msgs::msg::Odometry::SharedPtr msg){
           odom_ = *msg; has_odom_ = true;
         });
