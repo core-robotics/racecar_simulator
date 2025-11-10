@@ -12,7 +12,8 @@ def generate_launch_description():
     pkg_dir = '/home/a/racecar_simulator/src/racecar_simulator/'
 
 
-    map_name = "Austin"
+    map_name = "icra2025"
+
     # 1. Austin
     # 2. Melbourne
     # 3. Oschersleben
@@ -39,8 +40,10 @@ def generate_launch_description():
 
     rviz_config_file = os.path.join(pkg_dir, "params", "simulator.rviz")
     simulation_config_file = os.path.join(pkg_dir, "params", "simulation.yaml")
+    race_stat_config_file = os.path.join(pkg_dir, "params", "race_stats.yaml")
     map_folder = os.path.join(pkg_dir, "maps/f1tenth_racetracks")
-    map_img = os.path.join(map_folder, map_name, map_name + "_map.png")
+    # map_img = os.path.join(map_folder, map_name, map_name + "_map.png")
+    map_img = os.path.join(map_folder, map_name, map_name + "_map.pgm")
     map_yaml = os.path.join(map_folder, map_name, map_name + "_map.yaml")
     map_center = os.path.join(map_folder, map_name, map_name + "_centerline.csv")
 
@@ -112,10 +115,21 @@ def generate_launch_description():
         # parameters=[{"use_sim_time": True}],
     )
 
+    racecar_stat_node = Node(
+        package="racecar_simulator",
+        executable="race_stat",
+        name="race_stat",
+        output="screen",
+        parameters=[
+            race_stat_config_file,
+        ],
+    )
+
     ld.add_action(rviz_node)
     ld.add_action(racecar_node)
     ld.add_action(map_publisher_node)
     ld.add_action(robot0_state_publisher_node)
+    ld.add_action(racecar_stat_node)
     # ld.add_action(robot1_state_publisher_node)
 
     return ld

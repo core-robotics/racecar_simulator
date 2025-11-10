@@ -25,11 +25,10 @@ public:
     drive_topic_       = declare_parameter<std::string>("drive_topic", "ackermann_cmd0");
 
     // Pubs/Subs
-
     auto map_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
-	  auto pub_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable();
-    auto sub_qos   = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort();
-    
+    auto pub_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable();
+    auto sub_qos = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort();
+
     drive_pub_ = create_publisher<ackermann_msgs::msg::AckermannDriveStamped>(
         drive_topic_, pub_qos);
 
@@ -67,8 +66,8 @@ private:
     tf2::Matrix3x3(tq).getRPY(roll, pitch, yaw);
     const double x = p.x, y = p.y;
 
-    // Find lookahead target on center path
-    int target_idx = findLookaheadIndex(center_path_, x, y, lookahead_);
+    // === 변경점: Path를 원형으로 간주하여 lookahead 타겟 인덱스 선택 ===
+    int target_idx = findLookaheadIndexCyclic(center_path_, x, y, lookahead_);
     if (target_idx < 0) return;
 
     const auto &tp = center_path_.poses[target_idx].pose.position;
@@ -109,25 +108,31 @@ private:
     drive_pub_->publish(cmd);
   }
 
-  // Return first index whose distance >= Ld from (x,y); -1 if none
-  static int findLookaheadIndex(const nav_msgs::msg::Path &path,
-                                double x, double y, double Ld) {
-    int closest = 0;
-    double best = 1e18;
-    for (size_t i=0; i<path.poses.size(); ++i) {
+
+  static int findLookaheadIndexCyclic(const nav_msgs::msg::Path &path,
+                                      double x, double y, double Ld) {
+    const size_t N = path.poses.size();
+    if (N == 0) return -1;
+    if (N == 1) return 0;
+    size_t closest = 0;
+    double best_d2 = 1e18;
+    for (size_t i = 0; i < N; ++i) {
       const auto &pt = path.poses[i].pose.position;
-      double d2 = (pt.x - x)*(pt.x - x) + (pt.y - y)*(pt.y - y);
-      if (d2 < best) { best = d2; closest = static_cast<int>(i); }
+      double d2 = (pt.x - x) * (pt.x - x) + (pt.y - y) * (pt.y - y);
+      if (d2 < best_d2) { best_d2 = d2; closest = i; }
     }
+
     double accum = 0.0;
-    for (size_t i=closest; i+1<path.poses.size(); ++i) {
+    for (size_t step = 0; step < N; ++step) {
+      size_t i     = (closest + step) % N;
+      size_t inext = (i + 1) % N;
       const auto &a = path.poses[i].pose.position;
-      const auto &b = path.poses[i+1].pose.position;
+      const auto &b = path.poses[inext].pose.position;
       accum += std::hypot(b.x - a.x, b.y - a.y);
-      if (accum >= Ld) return static_cast<int>(i+1);
+      if (accum >= Ld) return static_cast<int>(inext);
     }
-    if (!path.poses.empty()) return static_cast<int>(path.poses.size()-1);
-    return -1;
+
+    return static_cast<int>(closest);
   }
 
   // Members

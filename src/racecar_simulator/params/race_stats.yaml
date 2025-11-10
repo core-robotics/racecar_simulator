@@ -1,0 +1,16 @@
+race_stat:
+  ros__parameters:
+    odom_topic: "odom0"
+    collision_topic: "collision0"
+    path_topic: "center_path"
+
+    text_frame: "map"
+    text_anchor_x: 4.0
+    text_anchor_y: 3.0
+    text_scale: 1.00
+
+    start_on_first_cross: true
+    one_sided_forward:  true
+    min_lap_time: 3.0
+
+    update_rate_hz: 50.0
