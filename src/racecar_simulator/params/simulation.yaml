@@ -17,50 +17,43 @@ racecar_simulator:
     drive_topic0: "ackermann_cmd0"
     state_topic0: "state0"
     scan_topic0: "scan0"
-    odom_topic0: "odom0"
     collision_topic0: "collision0"
+    odom_topic0: "odom0"
     imu_topic0: "imu0"
     base_frame0: "base_link0"
     scan_frame0: "laser_model0"
 
-    # Vehicle parameters (car0)
-    mass0: 3.5                          # kg
-    l_f0: 0.17145                       # m  distance from CoM to front axle
-    l_r0: 0.17145                       # m  distance from CoM to rear axle
-    I_z0: 0.04712                       # kg*m^2 yaw moment of inertia
+    # Vehicle parameters (car0) — from C++ defaults
+    mass0: 5.1                          # kg
+    l_r0: 0.115                         # m  CoM -> rear axle
+    l_f0: 0.345                         # m  CoM -> front axle
+    I_z0: 0.46                          # kg*m^2 yaw inertia
 
-    # Tire/friction model
-    Mu_x0: 0.8
-    Mu_y0: 0.8
-    B_xf0: 1.5
-    C_xf0: 1.5
-    D_xf0: 30.0
-    B_xr0: 1.5
-    C_xr0: 1.5
-    D_xr0: 30.0
-    B_yf0: 1.5
-    C_yf0: 1.5
-    D_yf0: 30.0
-    B_yr0: 1.5
-    C_yr0: 1.5
-    D_yr0: 30.0
+    # Tire/friction model (C++ names)
+    B_f0: 5.9
+    C_f0: 2.2
+    D_f0: 0.8
+    B_r0: 5.9
+    C_r0: 2.2
+    D_r0: 0.8
+    long_B0: 2.8
+    long_C0: 1.2
+    long_mu_tire0: 0.9
 
     # Drivetrain & motor (car0)
     wheel_radius0: 0.05                 # m
-    gear_ratio0: 3.846                  # 50/13
-    # motor_torque_constant0: 0.00273     # N*m/A
-    # power_train_inertia0: 7.0e-5        # kg*m^2 
-    # coulomb_friction0: 3.0e-3           # N*m
-    # viscous_friction0: 4.0e-6           # N*m*s/rad
-    motor_torque_constant0: 0.9
-    power_train_inertia0: 0.2
-    coulomb_friction0: 0.5
-    viscous_friction0: 0.3
+    motor_torque_constant0: 0.9     # N*m/A
+    power_train_inertia0: 0.2        # kg*m^2 
+    coulomb_friction0: 0.3           # N*m
+    viscous_friction0: 0.5           # N*m*s/rad
 
-    # Limits (car0)
-    steer_max0: 0.4                     # rad
-    steer_vel_max0: 4.0                 # rad/s
-    speed_max0: 10.0                    # m/s
-    accel_max0: 40.0                    # m/s^2
-    decel_max0: 40.0                    # m/s^2
-    jerk_max0: 1000.0                    # m/s^3
+    # Aerodynamic drag
+    Cd0_0: 0.1                          # N
+    Cd1_0: 0.01                         # N/(m/s)
+    Cd2_0: 0.1                          # N/(m/s)^2
+
+    # PID controller parameters (car0)
+    motor_p: 15.0
+    motor_i: 0.1
+    motor_d: 0.01
+    

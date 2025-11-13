@@ -28,6 +28,35 @@
 using namespace std::chrono_literals;
 using namespace racecar_simulator;
 
+class PIDController
+{
+private:
+	double kp_;
+	double ki_;
+	double kd_;
+	double prev_error_;
+	double integral_;
+
+public:
+	PIDController()
+		: kp_(0.0), ki_(0.0), kd_(0.0), prev_error_(0.0), integral_(0.0) {}
+	void set_gains(double kp, double ki, double kd)
+	{
+		kp_ = kp;
+		ki_ = ki;
+		kd_ = kd;
+	}
+	double compute(double setpoint, double measured, double dt)
+	{
+		double error = setpoint - measured;
+		integral_ += error * dt;
+		double derivative = (error - prev_error_) / dt;
+		prev_error_ = error;
+		double result = kp_ * error + ki_ * integral_ + kd_ * derivative;
+		return std::min(std::max(result, -100.0), 100.0);
+	}
+};
+
 class RacecarSimulator : public rclcpp::Node
 {
 private:
@@ -57,17 +86,17 @@ private:
 	struct CarParams
 	{
 		double mass, l_r, l_f, I_z;
-		double B_xf, C_xf, D_xf, B_xr, C_xr, D_xr;
-		double B_yf, C_yf, D_yf, B_yr, C_yr, D_yr;
-		double Mu_x, Mu_y;
-		double wheel_radius, gear_ratio;
+		double B_f, C_f, D_f, B_r, C_r, D_r;
+		double long_B, long_C, long_mu_tire;
+		double wheel_radius;
 		double power_train_inertia, motor_torque_constant;
 		double coulomb_friction, viscous_friction;
-		double steer_max, steer_vel_max;
-		double speed_max, accel_max, decel_max, jerk_max;
+		double Cd0, Cd1, Cd2;
 	};
 	CarParams car0_params_;
 
+	double motor_p_, motor_i_, motor_d_;
+	double motor_prev_e_, motor_integral_;
 	int vehicle_model0_;
 	std::string drive_topic0_, collision_topic0_, state_topic0_, scan_topic0_, odom_topic0_, imu_topic0_;
 	std::string base_frame0_, scan_frame0_;
@@ -76,7 +105,6 @@ private:
 	bool detect_car_mode_ = false;
 	bool state_noise_mode_ = false;
 	bool scan_noise_mode_ = false;
-	double desired_speed0_, desired_accel0_, desired_steer_ang0_;
 	double scan_fov_, scan_std_dev_;
 	int scan_beams_;
 	double map_free_threshold_;
@@ -101,6 +129,7 @@ private:
 	sim_msgs::msg::CarState init_car_state0_;
 	std::mt19937 rng_{std::random_device{}()};
 	std::normal_distribution<double> n01_{0.0, 1.0};
+	PIDController pid_controller_;
 
 public:
 	RacecarSimulator()
@@ -139,37 +168,31 @@ public:
 		this->declare_parameter("odom_topic0", "odom0");
 		this->declare_parameter("imu_topic0", "imu0");
 		this->declare_parameter("base_frame0", "base_link0");
-		this->declare_parameter("scan_frame0", "laser0");
-		this->declare_parameter("mass0", 3.5);
-		this->declare_parameter("l_r0", 0.17145);
-		this->declare_parameter("l_f0", 0.17145);
-		this->declare_parameter("I_z0", 0.04712);
-		this->declare_parameter("Mu_x0", 0.8);
-		this->declare_parameter("Mu_y0", 0.8);
-		this->declare_parameter("B_xf0", 1.5);
-		this->declare_parameter("C_xf0", 1.5);
-		this->declare_parameter("D_xf0", 30.0);
-		this->declare_parameter("B_xr0", 1.5);
-		this->declare_parameter("C_xr0", 1.5);
-		this->declare_parameter("D_xr0", 30.0);
-		this->declare_parameter("B_yf0", 1.5);
-		this->declare_parameter("C_yf0", 1.5);
-		this->declare_parameter("D_yf0", 30.0);
-		this->declare_parameter("B_yr0", 1.5);
-		this->declare_parameter("C_yr0", 1.5);
-		this->declare_parameter("D_yr0", 30.0);
+		this->declare_parameter("scan_frame0", "laser_model0");
+		this->declare_parameter("mass0", 5.1);
+		this->declare_parameter("l_r0", 0.115);
+		this->declare_parameter("l_f0", 0.345);
+		this->declare_parameter("I_z0", 0.46);
+		this->declare_parameter("B_f0", 5.9);
+		this->declare_parameter("C_f0", 2.2);
+		this->declare_parameter("D_f0", 0.8);
+		this->declare_parameter("B_r0", 5.9);
+		this->declare_parameter("C_r0", 2.2);
+		this->declare_parameter("D_r0", 0.8);
+		this->declare_parameter("long_B0", 2.8);
+		this->declare_parameter("long_C0", 1.2);
+		this->declare_parameter("long_mu_tire0", 0.9);
 		this->declare_parameter("wheel_radius0", 0.05);
-		this->declare_parameter("gear_ratio0", 3.846);
 		this->declare_parameter("motor_torque_constant0", 0.00273);
 		this->declare_parameter("power_train_inertia0", 7.0e-5);
 		this->declare_parameter("coulomb_friction0", 3.0e-3);
 		this->declare_parameter("viscous_friction0", 4.0e-6);
-		this->declare_parameter("steer_max0", 0.4);
-		this->declare_parameter("steer_vel_max0", 4.0);
-		this->declare_parameter("speed_max0", 10.0);
-		this->declare_parameter("accel_max0", 40.0);
-		this->declare_parameter("decel_max0", 40.0);
-		this->declare_parameter("jerk_max0", 100.0);
+		this->declare_parameter("Cd0_0", 0.1);
+		this->declare_parameter("Cd1_0", 0.01);
+		this->declare_parameter("Cd2_0", 0.1);
+		this->declare_parameter("motor_p", 15.0);
+		this->declare_parameter("motor_i", 0.1);
+		this->declare_parameter("motor_d", 0.01);
 
 		this->get_parameter("drive_topic0", drive_topic0_);
 		this->get_parameter("state_topic0", state_topic0_);
@@ -183,32 +206,28 @@ public:
 		this->get_parameter("l_r0", car0_params_.l_r);
 		this->get_parameter("l_f0", car0_params_.l_f);
 		this->get_parameter("I_z0", car0_params_.I_z);
-		this->get_parameter("Mu_x0", car0_params_.Mu_x);
-		this->get_parameter("Mu_y0", car0_params_.Mu_y);
-		this->get_parameter("B_xf0", car0_params_.B_xf);
-		this->get_parameter("C_xf0", car0_params_.C_xf);
-		this->get_parameter("D_xf0", car0_params_.D_xf);
-		this->get_parameter("B_xr0", car0_params_.B_xr);
-		this->get_parameter("C_xr0", car0_params_.C_xr);
-		this->get_parameter("D_xr0", car0_params_.D_xr);
-		this->get_parameter("B_yf0", car0_params_.B_yf);
-		this->get_parameter("C_yf0", car0_params_.C_yf);
-		this->get_parameter("D_yf0", car0_params_.D_yf);
-		this->get_parameter("B_yr0", car0_params_.B_yr);
-		this->get_parameter("C_yr0", car0_params_.C_yr);
-		this->get_parameter("D_yr0", car0_params_.D_yr);
+		this->get_parameter("B_f0", car0_params_.B_f);
+		this->get_parameter("C_f0", car0_params_.C_f);
+		this->get_parameter("D_f0", car0_params_.D_f);
+		this->get_parameter("B_r0", car0_params_.B_r);
+		this->get_parameter("C_r0", car0_params_.C_r);
+		this->get_parameter("D_r0", car0_params_.D_r);
+		this->get_parameter("long_B0", car0_params_.long_B);
+		this->get_parameter("long_C0", car0_params_.long_C);
+		this->get_parameter("long_mu_tire0", car0_params_.long_mu_tire);
 		this->get_parameter("wheel_radius0", car0_params_.wheel_radius);
-		this->get_parameter("gear_ratio0", car0_params_.gear_ratio);
 		this->get_parameter("power_train_inertia0", car0_params_.power_train_inertia);
 		this->get_parameter("motor_torque_constant0", car0_params_.motor_torque_constant);
 		this->get_parameter("coulomb_friction0", car0_params_.coulomb_friction);
 		this->get_parameter("viscous_friction0", car0_params_.viscous_friction);
-		this->get_parameter("steer_max0", car0_params_.steer_max);
-		this->get_parameter("steer_vel_max0", car0_params_.steer_vel_max);
-		this->get_parameter("speed_max0", car0_params_.speed_max);
-		this->get_parameter("accel_max0", car0_params_.accel_max);
-		this->get_parameter("decel_max0", car0_params_.decel_max);
-		this->get_parameter("jerk_max0", car0_params_.jerk_max);
+		this->get_parameter("Cd0_0", car0_params_.Cd0);
+		this->get_parameter("Cd1_0", car0_params_.Cd1);
+		this->get_parameter("Cd2_0", car0_params_.Cd2);
+		this->get_parameter("motor_p", motor_p_);
+		this->get_parameter("motor_i", motor_i_);
+		this->get_parameter("motor_d", motor_d_);
+
+		pid_controller_.set_gains(motor_p_, motor_i_, motor_d_);
 
 		// Convert frequencies to durations
 		auto simulator_period = std::chrono::duration<double>(1.0 / simulator_frequency_);
@@ -233,7 +252,7 @@ public:
 			scan_period,
 			std::bind(&RacecarSimulator::scanLoop, this));
 
-		tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+		tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(this);
 
 		auto r_t_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
 		auto r_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable();
@@ -263,7 +282,7 @@ public:
 		RCLCPP_INFO(this->get_logger(), "\nIMU frequency: %f Hz", imu_frequency_);
 	}
 
-	// utility functions
+		// utility functions
 	inline double wrapAngle(double a)
 	{
 		// normalize to [-pi, pi]
@@ -274,15 +293,23 @@ public:
 	{
 		return std::min(std::max(x, lo), hi);
 	}
+	inline double sign0(double x)
+	{
+		if (x > 0)
+			return 1.0;
+		if (x < 0)
+			return -1.0;
+		return 0.0;
+	}
 
 	// Simulator loop for updating car states
 	void simulatorLoop()
 	{
-		if (receive_start_pose_ == true && is_pose_init_ == false)
+		if (is_pose_init_ == false)
 		{
-			car_state0_.px = init_car_state0_.px;
-			car_state0_.py = init_car_state0_.py;
-			car_state0_.yaw = init_car_state0_.yaw;
+			car_state0_.px = 0.0;
+			car_state0_.py = 0.0;
+			car_state0_.yaw = 0.0;
 			car_state0_.vx = 0.0;
 			car_state0_.vy = 0.0;
 			car_state0_.r = 0.0;
@@ -298,9 +325,7 @@ public:
 			is_pose_init_ = true;
 		}
 
-		// setInput(car_state0_, desired_accel0_, desired_steer_ang0_, car0_params_);
 		updateState();
-
 		pub_state();
 		pub_colision(scan_msg_data0_, collision0_pub_);
 		setTF();
@@ -393,23 +418,15 @@ public:
 		car_state0_.steer = 0.0;
 		car_state0_.steer_vel = 0.0;
 
-		publishTransform("map", base_frame0_, car_state0_.px, car_state0_.py, car_state0_.yaw);
+		// publishTransform("map", base_frame0_, car_state0_.px, car_state0_.py, car_state0_.yaw);
 
 		RCLCPP_INFO(this->get_logger(), "\nCar0 x: %f, y: %f, yaw: %f", car_state0_.px, car_state0_.py, car_state0_.yaw);
-	}
-
-	// Callback for drive command of car0
-	void drive0Callback(const ackermann_msgs::msg::AckermannDriveStamped::SharedPtr msg)
-	{
-		car_state0_.steer = msg->drive.steering_angle;
-		car_state0_.accel_cmd = msg->drive.acceleration;
-		car_state0_.iq = (car0_params_.wheel_radius * (car0_params_.mass * car_state0_.accel_cmd)) / (car0_params_.motor_torque_constant* car0_params_.gear_ratio);
 	}
 
 	sim_msgs::msg::CarState update_k(const sim_msgs::msg::CarState &start,
 									 const CarParams &p)
 	{
-		sim_msgs::msg::CarState end;
+		sim_msgs::msg::CarState end = start;
 
 		const double L = p.l_f + p.l_r;
 		const double dt = 1.0 / simulator_frequency_;
@@ -426,60 +443,67 @@ public:
 		end.vx = vx;
 		end.vy = 0.0;
 		end.r = yaw_dot;
-		end.vw = vx;
-		end.ax = (end.vx - start.vx) / dt;
-		end.ay = 0.0;
-		end.slip_angle = 0.0;
-		end.slip_rate = 0.0;
-		end.accel_cmd = start.accel_cmd;
-		end.iq = start.iq;
-		end.steer = start.steer;
-		end.steer_vel = start.steer_vel;
-
 		return end;
 	}
+
+	// Callback for drive command of car0
+	void drive0Callback(const ackermann_msgs::msg::AckermannDriveStamped::SharedPtr msg)
+	{
+		car_state0_.steer = clamp(msg->drive.steering_angle, -0.4, 0.4);
+		car_state0_.accel_cmd = clamp(msg->drive.acceleration, -20.0, 20.0);
+	}
+	// Update car state using Pacejka tire model
 	sim_msgs::msg::CarState updateStatePacejka(sim_msgs::msg::CarState &start, CarParams &p)
 	{
-		if (std::abs(start.vx) < 0.01)
+		sim_msgs::msg::CarState end = start;
+		const double dt = 1.0 / simulator_frequency_;
+
+		if (std::abs(start.vx) < 0.2)
 		{
 			return update_k(start, p);
 		}
 
-		sim_msgs::msg::CarState end = start;
-		const double dt = 1.0 / simulator_frequency_;
+		const double L = p.l_f + p.l_r;
+		const double vx_safe = start.vx;
+		const double kappa = (start.vw - vx_safe) / vx_safe;
+		const double alpha_f = std::atan2(start.vy + p.l_f * start.r, vx_safe) - start.steer;
+		const double alpha_r = std::atan2(start.vy - p.l_r * start.r, vx_safe);
+		const double Fn_f = p.mass * 9.81 * (p.l_r / L);
+		const double Fn_r = p.mass * 9.81 * (p.l_f / L);
 
-		const double kappa = (start.vw - start.vx) / start.vx;
-		const double alpha_f = -std::atan2(start.vy + p.l_f * start.r, start.vx) + start.steer;
-		const double alpha_r = -std::atan2(start.vy - p.l_r * start.r, start.vx);
+		const double Fx_total = p.mass * 9.81 * p.long_mu_tire * std::sin(p.long_C * std::atan(p.long_B * kappa));
+		const double Fx_f = Fx_total * (p.l_r / L);
+		const double Fx_r = Fx_total * (p.l_f / L);
 
-		const double F_fx = p.D_xf * std::sin(p.C_xf * std::atan(p.B_xf * kappa)) * p.Mu_x;
-		const double F_rx = p.D_xr * std::sin(p.C_xr * std::atan(p.B_xr * kappa)) * p.Mu_x;
-		const double F_fy = p.D_yf * std::sin(p.C_yf * std::atan(p.B_yf * alpha_f)) * p.Mu_y;
-		const double F_ry = p.D_yr * std::sin(p.C_yr * std::atan(p.B_yr * alpha_r)) * p.Mu_y;
+		const double F_drag = p.Cd0 * sign0(vx_safe) + p.Cd1 * vx_safe + p.Cd2 * vx_safe * vx_safe;
+		const double Fy_f = -Fn_f * p.D_f * std::sin(p.C_f * std::atan(p.B_f * alpha_f));
+		const double Fy_r = -Fn_r * p.D_r * std::sin(p.C_r * std::atan(p.B_r * alpha_r));
 
-		const double x_dot = start.vx * std::cos(start.yaw) - start.vy * std::sin(start.yaw);
-		const double y_dot = start.vx * std::sin(start.yaw) + start.vy * std::cos(start.yaw);
+		const double iq = pid_controller_.compute(start.accel_cmd, start.ax, dt);
+
+		const double x_dot = vx_safe * std::cos(start.yaw) - start.vy * std::sin(start.yaw);
+		const double y_dot = vx_safe * std::sin(start.yaw) + start.vy * std::cos(start.yaw);
 		const double yaw_dot = start.r;
-		const double vx_dot = (F_rx + F_fx * std::cos(start.steer) - F_fy * std::sin(start.steer)) / p.mass + start.vy * start.r;
-		const double vy_dot = (F_fx * std::sin(start.steer) + F_ry + F_fy * std::cos(start.steer)) / p.mass - start.vx * start.r;
-		const double r_dot = (F_fx * std::sin(start.steer) + F_fy * (std::cos(start.steer)) * p.l_f - F_ry * p.l_r) / p.I_z;
+		const double vx_dot = (Fx_r + Fx_f * std::cos(start.steer) - Fy_f * std::sin(start.steer) - F_drag) / p.mass + start.vy * start.r;
+		const double vy_dot = (Fx_f * std::sin(start.steer) + Fy_r + Fy_f * std::cos(start.steer)) / p.mass - vx_safe * start.r;
+		const double r_dot = ((Fx_f * std::sin(start.steer) + Fy_f * std::cos(start.steer)) * p.l_f - Fy_r * p.l_r) / p.I_z;
+		const double vw_dot = (p.wheel_radius / p.power_train_inertia) *
+							  (p.motor_torque_constant * iq - p.wheel_radius * (Fx_f + Fx_r) -
+							   p.viscous_friction * start.vw - sign0(start.vw) * p.coulomb_friction);
 
-		const double tau_motor_wheel = p.motor_torque_constant * start.iq;
-		const double tau_tire = p.wheel_radius * (F_fx + F_rx);
-		const double tau_loss = p.coulomb_friction * std::copysign(1.0, start.vw) + p.viscous_friction * start.vw;
-		const double vw_dot = (p.wheel_radius / p.power_train_inertia) * (tau_motor_wheel - tau_tire - tau_loss);
 
 		end.px = start.px + x_dot * dt;
 		end.py = start.py + y_dot * dt;
 		end.yaw = wrapAngle(start.yaw + yaw_dot * dt);
-		end.vx = start.vx + vx_dot * dt;
+		end.vx = vx_safe + vx_dot * dt;
 		end.vy = start.vy + vy_dot * dt;
 		end.r = start.r + r_dot * dt;
 		end.vw = start.vw + vw_dot * dt;
-		end.ax = vx_dot;
-		end.ay = vy_dot;
-		end.slip_angle = std::atan2(end.vy, end.vx);
+		end.ax = vx_dot - start.r * start.vy;
+		end.ay = vy_dot + start.r * vx_safe;
+		end.slip_angle = std::atan2(end.vy, vx_safe);
 		end.slip_rate = kappa;
+		end.iq = iq;
 
 		return end;
 	}
@@ -582,7 +606,7 @@ public:
 			scan_msg_data.range_max = 10.0;
 			scan_msg_data.range_min = 0.1;
 			scan_msg_data.time_increment = 0.0;
-			scan_msg_data.scan_time = 1.0 / odom_frequency_;
+			scan_msg_data.scan_time = 1.0 / scan_frequency_;
 		}
 
 		if (scan_msg_data.ranges.size() != n)
