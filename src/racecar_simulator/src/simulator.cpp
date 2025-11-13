@@ -3,9 +3,9 @@
 #include <memory>
 // #include <yaml-cpp/yaml.h>
 #include <fstream>
-#include <algorithm>   // NEW: for std::transform
-#include <random>      // NEW: for noise generation
-#include <cmath>       // NEW: for trigonometric functions
+#include <algorithm>
+#include <random>
+#include <cmath>
 
 #include "rclcpp/rclcpp.hpp"
 #include "tf2/LinearMath/Matrix3x3.h"
@@ -16,7 +16,7 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
 #include "ackermann_msgs/msg/ackermann_drive_stamped.hpp"
-#include "control_msgs/msg/car_state.hpp"
+#include "sim_msgs/msg/car_state.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "nav_msgs/msg/path.hpp"
@@ -25,14 +25,15 @@
 #include "std_msgs/msg/bool.hpp"
 #include "racecar_simulator/scan_simulator_2d.hpp"
 
-using namespace std::chrono_literals; // Use chrono literals for timing
+using namespace std::chrono_literals;
 using namespace racecar_simulator;
 
 class RacecarSimulator : public rclcpp::Node
 {
 private:
 	rclcpp::TimerBase::SharedPtr simulator_timer_;
-	rclcpp::TimerBase::SharedPtr pub_timer_;
+	rclcpp::TimerBase::SharedPtr odom_timer_;
+	rclcpp::TimerBase::SharedPtr imu_timer_;
 	rclcpp::TimerBase::SharedPtr scan_timer_;
 
 	std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
@@ -42,20 +43,13 @@ private:
 	rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive1_sub_;
 	rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
 	rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr center_path_sub_;
-
+	rclcpp::Publisher<sim_msgs::msg::CarState>::SharedPtr state0_pub_;
 	rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan0_pub_;
-	rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan1_pub_;
-	rclcpp::Publisher<control_msgs::msg::CarState>::SharedPtr state0_pub_;
-	rclcpp::Publisher<control_msgs::msg::CarState>::SharedPtr state1_pub_;
-	rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub_;
 	rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr collision0_pub_;
-	rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr collision1_pub_;
 	rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom0_pub_;
-	rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom1_pub_;
-	// rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu0_pub_;
-	// rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu1_pub_;
+	rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu0_pub_;
 
-	control_msgs::msg::CarState car_state0_, car_state1_;
+	sim_msgs::msg::CarState car_state0_;
 
 	ScanSimulator2D scan_simulator_;
 	double map_free_threshold;
@@ -63,29 +57,31 @@ private:
 	struct CarParams
 	{
 		double mass, l_r, l_f, I_z;
-		double B_f, C_f, D_f, B_r, C_r, D_r;
+		double B_xf, C_xf, D_xf, B_xr, C_xr, D_xr;
+		double B_yf, C_yf, D_yf, B_yr, C_yr, D_yr;
+		double Mu_x, Mu_y;
+		double wheel_radius, gear_ratio;
+		double power_train_inertia, motor_torque_constant;
+		double coulomb_friction, viscous_friction;
 		double steer_max, steer_vel_max;
 		double speed_max, accel_max, decel_max, jerk_max;
 	};
-	CarParams car0_params_, car1_params_;
+	CarParams car0_params_;
 
-	int vehicle_model0_, vehicle_model1_;
-	std::string drive_topic0_, state_topic0_, drive_topic1_, state_topic1_, scan_topic0_, scan_topic1_;
+	int vehicle_model0_;
+	std::string drive_topic0_, collision_topic0_, state_topic0_, scan_topic0_, odom_topic0_, imu_topic0_;
+	std::string base_frame0_, scan_frame0_;
 	std::string pgm_file_path_, yaml_file_path_;
-	double simulator_frequency_, pub_frequency_, scan_frequency_;
+	double simulator_frequency_, odom_frequency_, imu_frequency_, scan_frequency_;
 	bool detect_car_mode_ = false;
 	bool state_noise_mode_ = false;
 	bool scan_noise_mode_ = false;
-
-	bool use_car1_ = true;
-
 	double desired_speed0_, desired_accel0_, desired_steer_ang0_;
-	double desired_speed1_, desired_accel1_, desired_steer_ang1_;
 	double scan_fov_, scan_std_dev_;
 	int scan_beams_;
 	double map_free_threshold_;
-	std::vector<float> scan_data_float0_, scan_data_float1_;
-	sensor_msgs::msg::LaserScan scan_msg_data0_, scan_msg_data1_;
+	std::vector<float> scan_data_float0_;
+	sensor_msgs::msg::LaserScan scan_msg_data0_;
 
 	bool map_exists_ = false;
 	nav_msgs::msg::OccupancyGrid original_map_;
@@ -102,7 +98,7 @@ private:
 
 	bool receive_start_pose_ = false;
 	bool is_pose_init_ = false;
-	control_msgs::msg::CarState init_car_state0_;
+	sim_msgs::msg::CarState init_car_state0_;
 	std::mt19937 rng_{std::random_device{}()};
 	std::normal_distribution<double> n01_{0.0, 1.0};
 
@@ -110,24 +106,22 @@ public:
 	RacecarSimulator()
 		: Node("racecar_simulator")
 	{
-		// Load parameters
-		// Params params = load_parameters(this);
 		// General parameters
 		this->declare_parameter("simulator_frequency", 200.0);
-		this->declare_parameter("pub_frequency", 50.0);
+		this->declare_parameter("odom_frequency", 50.0);
+		this->declare_parameter("imu_frequency", 100.0);
 		this->declare_parameter("scan_frequency", 40.0);
 		this->declare_parameter("scan_beams", 1080);
-		this->declare_parameter("scan_field_of_view", 2.0 * M_PI);
+		this->declare_parameter("scan_field_of_view", 4.71238898);
 		this->declare_parameter("scan_std_dev", 0.01);
 		this->declare_parameter("map_free_threshold", 0.2);
 		this->declare_parameter("detect_car_mode", false);
 		this->declare_parameter("state_noise_mode", false);
 		this->declare_parameter("scan_noise_mode", false);
-		// NEW: parameter to control whether car1 is used
-		this->declare_parameter("use_car1", true);
 
 		this->get_parameter("simulator_frequency", simulator_frequency_);
-		this->get_parameter("pub_frequency", pub_frequency_);
+		this->get_parameter("odom_frequency", odom_frequency_);
+		this->get_parameter("imu_frequency", imu_frequency_);
 		this->get_parameter("scan_frequency", scan_frequency_);
 		this->get_parameter("scan_beams", scan_beams_);
 		this->get_parameter("scan_field_of_view", scan_fov_);
@@ -136,45 +130,79 @@ public:
 		this->get_parameter("detect_car_mode", detect_car_mode_);
 		this->get_parameter("state_noise_mode", state_noise_mode_);
 		this->get_parameter("scan_noise_mode", scan_noise_mode_);
-		// NEW: load use_car1 (default true to preserve behavior)
-		this->get_parameter("use_car1", use_car1_);
 
 		// Car0 parameters
-		this->declare_parameter("vehicle_model0", 1);
 		this->declare_parameter("drive_topic0", "ackermann_cmd0");
 		this->declare_parameter("state_topic0", "state0");
 		this->declare_parameter("scan_topic0", "scan0");
+		this->declare_parameter("collision_topic0", "collision0");
+		this->declare_parameter("odom_topic0", "odom0");
+		this->declare_parameter("imu_topic0", "imu0");
+		this->declare_parameter("base_frame0", "base_link0");
+		this->declare_parameter("scan_frame0", "laser0");
 		this->declare_parameter("mass0", 3.5);
 		this->declare_parameter("l_r0", 0.17145);
 		this->declare_parameter("l_f0", 0.17145);
 		this->declare_parameter("I_z0", 0.04712);
-		this->declare_parameter("B_f0", 1.5);
-		this->declare_parameter("C_f0", 1.5);
-		this->declare_parameter("D_f0", 30.0);
-		this->declare_parameter("B_r0", 1.5);
-		this->declare_parameter("C_r0", 1.5);
-		this->declare_parameter("D_r0", 30.0);
-		this->declare_parameter("steer_max0", 4.0);
+		this->declare_parameter("Mu_x0", 0.8);
+		this->declare_parameter("Mu_y0", 0.8);
+		this->declare_parameter("B_xf0", 1.5);
+		this->declare_parameter("C_xf0", 1.5);
+		this->declare_parameter("D_xf0", 30.0);
+		this->declare_parameter("B_xr0", 1.5);
+		this->declare_parameter("C_xr0", 1.5);
+		this->declare_parameter("D_xr0", 30.0);
+		this->declare_parameter("B_yf0", 1.5);
+		this->declare_parameter("C_yf0", 1.5);
+		this->declare_parameter("D_yf0", 30.0);
+		this->declare_parameter("B_yr0", 1.5);
+		this->declare_parameter("C_yr0", 1.5);
+		this->declare_parameter("D_yr0", 30.0);
+		this->declare_parameter("wheel_radius0", 0.05);
+		this->declare_parameter("gear_ratio0", 3.846);
+		this->declare_parameter("motor_torque_constant0", 0.00273);
+		this->declare_parameter("power_train_inertia0", 7.0e-5);
+		this->declare_parameter("coulomb_friction0", 3.0e-3);
+		this->declare_parameter("viscous_friction0", 4.0e-6);
+		this->declare_parameter("steer_max0", 0.4);
 		this->declare_parameter("steer_vel_max0", 4.0);
 		this->declare_parameter("speed_max0", 10.0);
 		this->declare_parameter("accel_max0", 40.0);
 		this->declare_parameter("decel_max0", 40.0);
 		this->declare_parameter("jerk_max0", 100.0);
 
-		this->get_parameter("vehicle_model0", vehicle_model0_);
 		this->get_parameter("drive_topic0", drive_topic0_);
 		this->get_parameter("state_topic0", state_topic0_);
 		this->get_parameter("scan_topic0", scan_topic0_);
+		this->get_parameter("collision_topic0", collision_topic0_);
+		this->get_parameter("odom_topic0", odom_topic0_);
+		this->get_parameter("imu_topic0", imu_topic0_);
+		this->get_parameter("base_frame0", base_frame0_);
+		this->get_parameter("scan_frame0", scan_frame0_);
 		this->get_parameter("mass0", car0_params_.mass);
 		this->get_parameter("l_r0", car0_params_.l_r);
 		this->get_parameter("l_f0", car0_params_.l_f);
 		this->get_parameter("I_z0", car0_params_.I_z);
-		this->get_parameter("B_f0", car0_params_.B_f);
-		this->get_parameter("C_f0", car0_params_.C_f);
-		this->get_parameter("D_f0", car0_params_.D_f);
-		this->get_parameter("B_r0", car0_params_.B_r);
-		this->get_parameter("C_r0", car0_params_.C_r);
-		this->get_parameter("D_r0", car0_params_.D_r);
+		this->get_parameter("Mu_x0", car0_params_.Mu_x);
+		this->get_parameter("Mu_y0", car0_params_.Mu_y);
+		this->get_parameter("B_xf0", car0_params_.B_xf);
+		this->get_parameter("C_xf0", car0_params_.C_xf);
+		this->get_parameter("D_xf0", car0_params_.D_xf);
+		this->get_parameter("B_xr0", car0_params_.B_xr);
+		this->get_parameter("C_xr0", car0_params_.C_xr);
+		this->get_parameter("D_xr0", car0_params_.D_xr);
+		this->get_parameter("B_yf0", car0_params_.B_yf);
+		this->get_parameter("C_yf0", car0_params_.C_yf);
+		this->get_parameter("D_yf0", car0_params_.D_yf);
+		this->get_parameter("B_yr0", car0_params_.B_yr);
+		this->get_parameter("C_yr0", car0_params_.C_yr);
+		this->get_parameter("D_yr0", car0_params_.D_yr);
+		this->get_parameter("wheel_radius0", car0_params_.wheel_radius);
+		this->get_parameter("gear_ratio0", car0_params_.gear_ratio);
+		this->get_parameter("power_train_inertia0", car0_params_.power_train_inertia);
+		this->get_parameter("motor_torque_constant0", car0_params_.motor_torque_constant);
+		this->get_parameter("coulomb_friction0", car0_params_.coulomb_friction);
+		this->get_parameter("viscous_friction0", car0_params_.viscous_friction);
 		this->get_parameter("steer_max0", car0_params_.steer_max);
 		this->get_parameter("steer_vel_max0", car0_params_.steer_vel_max);
 		this->get_parameter("speed_max0", car0_params_.speed_max);
@@ -182,220 +210,112 @@ public:
 		this->get_parameter("decel_max0", car0_params_.decel_max);
 		this->get_parameter("jerk_max0", car0_params_.jerk_max);
 
-		// Car1 parameters
-		this->declare_parameter("vehicle_model1", 1);
-		this->declare_parameter("drive_topic1", "ackermann_cmd1");
-		this->declare_parameter("state_topic1", "state1");
-		this->declare_parameter("scan_topic1", "scan1");
-		this->declare_parameter("mass1", 3.5);
-		this->declare_parameter("l_r1", 0.17145);
-		this->declare_parameter("l_f1", 0.17145);
-		this->declare_parameter("I_z1", 0.04712);
-		this->declare_parameter("B_f1", 1.5);
-		this->declare_parameter("C_f1", 1.5);
-		this->declare_parameter("D_f1", 30.0);
-		this->declare_parameter("B_r1", 1.5);
-		this->declare_parameter("C_r1", 1.5);
-		this->declare_parameter("D_r1", 30.0);
-		this->declare_parameter("steer_max1", 0.4);
-		this->declare_parameter("steer_vel_max1", 0.041);
-		this->declare_parameter("speed_max1", 10.0);
-		this->declare_parameter("accel_max1", 4.0);
-		this->declare_parameter("decel_max1", 4.0);
-		this->declare_parameter("jerk_max1", 1.0);
-
-		this->get_parameter("vehicle_model1", vehicle_model1_);
-		this->get_parameter("drive_topic1", drive_topic1_);
-		this->get_parameter("state_topic1", state_topic1_);
-		this->get_parameter("scan_topic1", scan_topic1_);
-		this->get_parameter("mass1", car1_params_.mass);
-		this->get_parameter("l_r1", car1_params_.l_r);
-		this->get_parameter("l_f1", car1_params_.l_f);
-		this->get_parameter("I_z1", car1_params_.I_z);
-		this->get_parameter("B_f1", car1_params_.B_f);
-		this->get_parameter("C_f1", car1_params_.C_f);
-		this->get_parameter("D_f1", car1_params_.D_f);
-		this->get_parameter("B_r1", car1_params_.B_r);
-		this->get_parameter("C_r1", car1_params_.C_r);
-		this->get_parameter("D_r1", car1_params_.D_r);
-		this->get_parameter("steer_max1", car1_params_.steer_max);
-		this->get_parameter("steer_vel_max1", car1_params_.steer_vel_max);
-		this->get_parameter("speed_max1", car1_params_.speed_max);
-		this->get_parameter("accel_max1", car1_params_.accel_max);
-		this->get_parameter("decel_max1", car1_params_.decel_max);
-		this->get_parameter("jerk_max1", car1_params_.jerk_max);
-
 		// Convert frequencies to durations
 		auto simulator_period = std::chrono::duration<double>(1.0 / simulator_frequency_);
-		// auto pub_period = std::chrono::duration<double>(1.0 / pub_frequency_);
+		auto odom_period = std::chrono::duration<double>(1.0 / odom_frequency_);
+		auto imu_period = std::chrono::duration<double>(1.0 / imu_frequency_);
 		auto scan_period = std::chrono::duration<double>(1.0 / scan_frequency_);
 
 		// Create publishers and subscribers
-		
 		simulator_timer_ = this->create_wall_timer(
 			simulator_period,
 			std::bind(&RacecarSimulator::simulatorLoop, this));
-			
-		// pub_timer_ = this->create_wall_timer(
-		// 	pub_period,
-		// 	std::bind(&RacecarSimulator::pubLoop, this));
-				
+
+		odom_timer_ = this->create_wall_timer(
+			odom_period,
+			std::bind(&RacecarSimulator::odomLoop, this));
+
+		imu_timer_ = this->create_wall_timer(
+			imu_period,
+			std::bind(&RacecarSimulator::imuLoop, this));
+
 		scan_timer_ = this->create_wall_timer(
 			scan_period,
 			std::bind(&RacecarSimulator::scanLoop, this));
 
-					
 		tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
 		auto r_t_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
 		auto r_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable();
-		auto b_qos   = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort();
-		// auto s_qos  = rclcpp::SensorDataQoS().best_effort().keep_last(1);
+		auto b_qos = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort();
 
 		init_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
 			"initialpose", r_qos, std::bind(&RacecarSimulator::car0RvizCallback, this, std::placeholders::_1));
 
-		// CHANGED: Create car1 endpoints only if use_car1_ is true
-		if (use_car1_) { // NEW
-			goal_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-				"goal_pose", r_qos, std::bind(&RacecarSimulator::car1RvizCallback, this, std::placeholders::_1));
-		}
-
 		drive0_sub_ = this->create_subscription<ackermann_msgs::msg::AckermannDriveStamped>(
 			drive_topic0_, b_qos, std::bind(&RacecarSimulator::drive0Callback, this, std::placeholders::_1));
-
-		// CHANGED: Create car1 drive sub only if enabled
-		if (use_car1_) { // NEW
-			drive1_sub_ = this->create_subscription<ackermann_msgs::msg::AckermannDriveStamped>(
-				drive_topic1_, b_qos, std::bind(&RacecarSimulator::drive1Callback, this, std::placeholders::_1));
-		}
 
 		map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
 			"map", r_t_qos, std::bind(&RacecarSimulator::mapCallback, this, std::placeholders::_1));
 
-		center_path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
-			"center_path", r_t_qos, std::bind(&RacecarSimulator::centerPathCallback, this, std::placeholders::_1));
-
 		scan0_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic0_, r_qos);
-		state0_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic0_, r_qos);
-		collision0_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision0", r_qos);
-		odom0_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom0", r_qos);
-
-		// CHANGED: Create car1 pubs only if enabled
-		if (use_car1_) { // NEW
-			scan1_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic1_, r_qos);
-			state1_pub_ = this->create_publisher<control_msgs::msg::CarState>(state_topic1_, r_qos);
-			collision1_pub_ = this->create_publisher<std_msgs::msg::Bool>("collision1", r_qos);
-			odom1_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom1", r_qos);
-		}
+		state0_pub_ = this->create_publisher<sim_msgs::msg::CarState>(state_topic0_, r_qos);
+		collision0_pub_ = this->create_publisher<std_msgs::msg::Bool>(collision_topic0_, r_qos);
+		odom0_pub_ = this->create_publisher<nav_msgs::msg::Odometry>(odom_topic0_, r_qos);
+		imu0_pub_ = this->create_publisher<sensor_msgs::msg::Imu>(imu_topic0_, r_qos);
 
 		scan_simulator_ = ScanSimulator2D(scan_beams_, scan_fov_, scan_std_dev_);
-
 		// Initialize simulator
 		RCLCPP_INFO(this->get_logger(), "\nRacecar simulator initialized");
 		RCLCPP_INFO(this->get_logger(), "\nSimulator frequency: %f Hz", simulator_frequency_);
 		RCLCPP_INFO(this->get_logger(), "\nScan frequency: %f Hz", scan_frequency_);
-		// RCLCPP_INFO(this->get_logger(), "\nPublish frequency: %f Hz", pub_frequency_);
-		RCLCPP_INFO(this->get_logger(), "\nuse_car1: %s", use_car1_ ? "true" : "false"); 
-		// RCLCPP_INFO(this->get_logger(), "\nvehicle_model0: %d", vehicle_model0_);
-		// RCLCPP_INFO(this->get_logger(), "\nvehicle_model1: %d", vehicle_model1_);
+		RCLCPP_INFO(this->get_logger(), "\nOdom frequency: %f Hz", odom_frequency_);
+		RCLCPP_INFO(this->get_logger(), "\nIMU frequency: %f Hz", imu_frequency_);
+	}
 
-		// //levinelobby
-		// car_state0_.px = 0.688;
-		// car_state0_.px = 0.688;
-		// car_state0_.py = -0.906;
-		// car_state0_.yaw = -70 * M_PI / 180;
+	// utility functions
+	inline double wrapAngle(double a)
+	{
+		// normalize to [-pi, pi]
+		return std::remainder(a, 2.0 * M_PI);
+	}
+
+	inline double clamp(double x, double lo, double hi)
+	{
+		return std::min(std::max(x, lo), hi);
 	}
 
 	// Simulator loop for updating car states
 	void simulatorLoop()
 	{
-		if (receive_start_pose_==true&&is_pose_init_ == false)
+		if (receive_start_pose_ == true && is_pose_init_ == false)
 		{
 			car_state0_.px = init_car_state0_.px;
 			car_state0_.py = init_car_state0_.py;
 			car_state0_.yaw = init_car_state0_.yaw;
-
-			// NEW: Only initialize car1 pose when enabled
-			if (use_car1_) {
-				car_state1_.px = 100;
-				car_state1_.py = 100;
-				car_state1_.yaw = 0;
-			}
+			car_state0_.vx = 0.0;
+			car_state0_.vy = 0.0;
+			car_state0_.r = 0.0;
+			car_state0_.vw = 0.0;
+			car_state0_.ax = 0.0;
+			car_state0_.ay = 0.0;
+			car_state0_.slip_angle = 0.0;
+			car_state0_.slip_rate = 0.0;
+			car_state0_.accel_cmd = 0.0;
+			car_state0_.iq = 0.0;
+			car_state0_.steer = 0.0;
+			car_state0_.steer_vel = 0.0;
 			is_pose_init_ = true;
 		}
 
-		// current_map_ = original_map_;
-		// pub_scan(car_state0_, "laser_model0", scan0_pub_, scan_msg_data0_);
-		state0Publisher();
-		pub_colision(scan_msg_data0_, collision0_pub_);
-		pub_odom(car_state0_, "base_link0", "odom0", odom0_pub_);
-
-		// NEW: Entirely skip car1 publish path when disabled
-		if (use_car1_) {
-			// pub_scan(car_state1_, "laser_model1", scan1_pub_, scan_msg_data1_);
-			state1Publisher();
-			pub_colision(scan_msg_data1_, collision1_pub_);
-			pub_odom(car_state1_, "base_link1", "odom1", odom1_pub_);
-		}
-
-
-		setInput(car_state0_, desired_accel0_, desired_steer_ang0_, car0_params_);
-		// NEW: Skip car1 input update entirely when disabled
-		if (use_car1_) {
-			setInput(car_state1_, desired_accel1_, desired_steer_ang1_, car1_params_);
-		}
-
+		// setInput(car_state0_, desired_accel0_, desired_steer_ang0_, car0_params_);
 		updateState();
 
+		pub_state();
+		pub_colision(scan_msg_data0_, collision0_pub_);
 		setTF();
-
 	}
-
-	// Publisher loop for broadcasting car states
-	void pubLoop()
+	void odomLoop()
 	{
-
-		// if (receive_start_pose_==true&&is_pose_init_ == false)
-		// {
-		// 	car_state0_.px = init_car_state0_.px;
-		// 	car_state0_.py = init_car_state0_.py;
-		// 	car_state0_.yaw = init_car_state0_.yaw;
-
-		// 	// NEW: Only initialize car1 pose when enabled
-		// 	if (use_car1_) {
-		// 		car_state1_.px = 100;
-		// 		car_state1_.py = 100;
-		// 		car_state1_.yaw = 0;
-		// 	}
-		// 	is_pose_init_ = true;
-		// }
-
-		// // current_map_ = original_map_;
-		// // pub_scan(car_state0_, "laser_model0", scan0_pub_, scan_msg_data0_);
-		// state0Publisher();
-		// pub_colision(scan_msg_data0_, collision0_pub_);
-		// pub_odom(car_state0_, "base_link0", "odom0", odom0_pub_);
-
-		// // NEW: Entirely skip car1 publish path when disabled
-		// if (use_car1_) {
-		// 	// pub_scan(car_state1_, "laser_model1", scan1_pub_, scan_msg_data1_);
-		// 	state1Publisher();
-		// 	pub_colision(scan_msg_data1_, collision1_pub_);
-		// 	pub_odom(car_state1_, "base_link1", "odom1", odom1_pub_);
-		// }
-		return;
+		pub_odom(car_state0_, base_frame0_, odom0_pub_);
 	}
-
-	// Timer callback for scan publishing
+	void imuLoop()
+	{
+		pub_imu(car_state0_, base_frame0_, imu0_pub_);
+	}
 	void scanLoop()
 	{
-		pub_scan(car_state0_, "laser_model0", scan0_pub_, scan_msg_data0_);
-
-		// NEW: Skip car1 scan publish when disabled
-		if (use_car1_) {
-			pub_scan(car_state1_, "laser_model1", scan1_pub_, scan_msg_data1_);
-		}
+		pub_scan(car_state0_, scan_frame0_, scan0_pub_, scan_msg_data0_);
 	}
 
 	// Publish transform between frames
@@ -413,7 +333,6 @@ public:
 		t.transform.translation.z = 0.0;
 
 		tf2::Quaternion q;
-		q.normalize();
 		q.setRPY(0, 0, yaw);
 		t.transform.rotation.x = q.x();
 		t.transform.rotation.y = q.y();
@@ -434,49 +353,14 @@ public:
 
 	void setTF()
 	{
-
-		publishTransform("map", "base_link0", car_state0_.px, car_state0_.py, car_state0_.yaw);
+		publishTransform("map", base_frame0_, car_state0_.px, car_state0_.py, car_state0_.yaw);
 		publishTransform("front_left_hinge0", "front_left_wheel0", 0.0, 0.0, car_state0_.steer);
 		publishTransform("front_right_hinge0", "front_right_wheel0", 0.0, 0.0, car_state0_.steer);
-
-		// NEW: car1 TF only when enabled
-		if (use_car1_) {
-			publishTransform("map", "base_link1", car_state1_.px, car_state1_.py, car_state1_.yaw);
-			publishTransform("front_left_hinge1", "front_left_wheel1", 0.0, 0.0, car_state1_.steer);
-			publishTransform("front_right_hinge1", "front_right_wheel1", 0.0, 0.0, car_state1_.steer);
-		}
 	}
 
 	void updateState()
 	{
-		if (vehicle_model0_ == 0)
-		{
-			car_state0_ = updateStateSingleTrack(car_state0_, car0_params_);
-		}
-		else if (vehicle_model0_ == 1)
-		{
-			car_state0_ = updateStatePacejka(car_state0_, car0_params_);
-		}
-		else
-		{
-			std::cout << "Invalid vehicle model for car0" << std::endl;
-		}
-
-		// NEW: car1 update only when enabled; otherwise no computation is performed
-		if (use_car1_) {
-			if (vehicle_model1_ == 0)
-			{
-				car_state1_ = updateStateSingleTrack(car_state1_, car1_params_);
-			}
-			else if (vehicle_model1_ == 1)
-			{
-				car_state1_ = updateStatePacejka(car_state1_, car1_params_);
-			}
-			else
-			{
-				std::cout << "Invalid vehicle model for car1" << std::endl;
-			}
-		}
+		car_state0_ = updateStatePacejka(car_state0_, car0_params_);
 	}
 
 	// Callback for initial pose of car0
@@ -496,330 +380,106 @@ public:
 		car_state0_.px = msg->pose.pose.position.x;
 		car_state0_.py = msg->pose.pose.position.y;
 		car_state0_.yaw = yaw;
-		car_state0_.v = 0.0;
-		car_state0_.a = 0.0;
-		car_state0_.accel = 0.0;
-		desired_accel0_ = 0.0;
+		car_state0_.vx = 0.0;
+		car_state0_.vy = 0.0;
+		car_state0_.r = 0.0;
+		car_state0_.vw = 0.0;
+		car_state0_.ax = 0.0;
+		car_state0_.ay = 0.0;
+		car_state0_.slip_angle = 0.0;
+		car_state0_.slip_rate = 0.0;
+		car_state0_.accel_cmd = 0.0;
+		car_state0_.iq = 0.0;
 		car_state0_.steer = 0.0;
+		car_state0_.steer_vel = 0.0;
 
-		publishTransform("map", "base_link0", car_state0_.px, car_state0_.py, car_state0_.yaw);
+		publishTransform("map", base_frame0_, car_state0_.px, car_state0_.py, car_state0_.yaw);
 
 		RCLCPP_INFO(this->get_logger(), "\nCar0 x: %f, y: %f, yaw: %f", car_state0_.px, car_state0_.py, car_state0_.yaw);
-	}
-
-	// Callback for initial pose of car1
-	void car1RvizCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
-	{
-		// Optional guard: if no car1, ignore. This does not change behavior when subscriptions are not created.
-		if (!use_car1_) return; // NEW (defensive, callback won't be connected when disabled)
-
-		// Convert quaternion to Euler angles to extract yaw
-		tf2::Quaternion q(
-			msg->pose.orientation.x,
-			msg->pose.orientation.y,
-			msg->pose.orientation.z,
-			msg->pose.orientation.w);
-
-		tf2::Matrix3x3 m(q);
-		double roll, pitch, yaw;
-		m.getRPY(roll, pitch, yaw);
-
-		car_state1_.px = msg->pose.position.x;
-		car_state1_.py = msg->pose.position.y;
-		car_state1_.yaw = yaw;
-		car_state1_.v = 0.0;
-		car_state1_.a = 0.0;
-		car_state1_.accel = 0.0;
-		desired_accel1_ = 0.0;
-		car_state1_.steer = 0.0;
-
-		publishTransform("map", "base_link1", car_state1_.px, car_state1_.py, car_state1_.yaw);
-		RCLCPP_INFO(this->get_logger(), "\nCar1 x: %f, y: %f, yaw: %f", car_state1_.px, car_state1_.py, car_state1_.yaw);
 	}
 
 	// Callback for drive command of car0
 	void drive0Callback(const ackermann_msgs::msg::AckermannDriveStamped::SharedPtr msg)
 	{
-		desired_accel0_ = msg->drive.acceleration;
-		desired_steer_ang0_ = msg->drive.steering_angle;
+		car_state0_.steer = msg->drive.steering_angle;
+		car_state0_.accel_cmd = msg->drive.acceleration;
+		car_state0_.iq = (car0_params_.wheel_radius * (car0_params_.mass * car_state0_.accel_cmd)) / (car0_params_.motor_torque_constant* car0_params_.gear_ratio);
 	}
 
-	// Callback for drive command of car1
-	void drive1Callback(const ackermann_msgs::msg::AckermannDriveStamped::SharedPtr msg)
+	sim_msgs::msg::CarState update_k(const sim_msgs::msg::CarState &start,
+									 const CarParams &p)
 	{
-		if (!use_car1_) return; // NEW (defensive)
-		desired_accel1_ = msg->drive.acceleration;
-		desired_steer_ang1_ = msg->drive.steering_angle;
-	}
+		sim_msgs::msg::CarState end;
 
-	// Publish state of car0
-	void state0Publisher()
-	{
-		state0_pub_->publish(car_state0_);
-	}
-
-	// Publish state of car1
-	void state1Publisher()
-	{
-		if (!use_car1_) return; // NEW (defensive)
-		state1_pub_->publish(car_state1_);
-	}
-
-	void setInput(control_msgs::msg::CarState &state, double desired_accel, double desired_steer_ang, CarParams car_params)
-	{
-
-		double dt = 1.0 / simulator_frequency_;
-		double steer_diff = desired_steer_ang - state.steer;
-		double steer_diff_abs = std::abs(steer_diff);
-		double steer_change_max = car_params.steer_vel_max * dt;
-
-		if (steer_diff_abs > steer_change_max)
-		{
-			state.steer += steer_change_max * (steer_diff / steer_diff_abs);
-		}
-		else
-		{
-			state.steer += steer_diff;
-		}
-
-		if (state.steer > car_params.steer_max)
-		{
-			state.steer = car_params.steer_max;
-		}
-		else if (state.steer < -car_params.steer_max)
-		{
-			state.steer = -car_params.steer_max;
-		}
-
-		double accel_diff = desired_accel - state.accel;
-		double accel_diff_abs = std::abs(accel_diff);
-		double accel_change_max = car_params.jerk_max * dt;
-
-		if (accel_diff_abs > accel_change_max)
-		{
-			state.accel += accel_change_max * (accel_diff / accel_diff_abs);
-		}
-		else
-		{
-			state.accel += accel_diff;
-		}
-
-		if (state.accel > car_params.accel_max)
-		{
-			state.accel = car_params.accel_max;
-		}
-		else if (state.accel < -car_params.decel_max)
-		{
-			state.accel = -car_params.decel_max;
-		}
-
-		// Check for NaN values
-		if (std::isnan(state.steer) || std::isnan(state.accel))
-		{
-			RCLCPP_WARN(this->get_logger(), "NaN detected in setInput and will be reset.");
-			state.steer = 0.0;
-			state.accel = 0.0;
-		}
-	}
-
-	control_msgs::msg::CarState update_k(const control_msgs::msg::CarState start, double accel, double steer_vel, CarParams p, double dt)
-	{
-		control_msgs::msg::CarState end;
-
-		// compute first derivatives of state
-		double x_dot = start.v * std::cos(start.yaw);
-		double y_dot = start.v * std::sin(start.yaw);
-		double v_dot = accel;
-		double steer_angle_dot = steer_vel;
-		double theta_dot = start.v / (p.l_f + p.l_r) * std::tan(start.steer);
-		// double theta_double_dot = accel / (p.l_f + p.l_r) * std::tan(start.steer) +
-		// 							start.v * steer_vel / ((p.l_f + p.l_r) * std::pow(std::cos(start.steer), 2));
-		// double slip_angle_dot = 0;
+		const double L = p.l_f + p.l_r;
+		const double dt = 1.0 / simulator_frequency_;
+		// integrate input
+		const double vx = start.vx + start.accel_cmd * dt;
+		const double x_dot = vx * std::cos(start.yaw);
+		const double y_dot = vx * std::sin(start.yaw);
+		const double yaw_dot = vx / L * std::tan(start.steer);
 
 		// update state
 		end.px = start.px + x_dot * dt;
 		end.py = start.py + y_dot * dt;
-		end.yaw = start.yaw + theta_dot * dt;
-		end.v = start.v + v_dot * dt;
-		end.steer = start.steer + steer_angle_dot * dt;
-		end.omega = 0;		// start.angular_velocity + theta_double_dot * dt;
-		end.slip_angle = 0; // start.slip_angle + slip_angle_dot * dt;
-
-		if (end.yaw > M_PI)
-			end.yaw -= 2 * M_PI;
-		else if (end.yaw < -M_PI)
-			end.yaw += 2 * M_PI;
+		end.yaw = wrapAngle(start.yaw + yaw_dot * dt);
+		end.vx = vx;
+		end.vy = 0.0;
+		end.r = yaw_dot;
+		end.vw = vx;
+		end.ax = (end.vx - start.vx) / dt;
+		end.ay = 0.0;
+		end.slip_angle = 0.0;
+		end.slip_rate = 0.0;
+		end.accel_cmd = start.accel_cmd;
+		end.iq = start.iq;
+		end.steer = start.steer;
+		end.steer_vel = start.steer_vel;
 
 		return end;
 	}
-	control_msgs::msg::CarState updateStateSingleTrack(control_msgs::msg::CarState &start, CarParams p)
+	sim_msgs::msg::CarState updateStatePacejka(sim_msgs::msg::CarState &start, CarParams &p)
 	{
-		if (abs(start.v) < 0.1)
+		if (std::abs(start.vx) < 0.01)
 		{
-			return update_k(start, start.accel, start.steer_vel, p, 1.0 / simulator_frequency_);
-		}
-		double g = 9.81;
-		double h_cg = 0.074;
-		double friction_coeff = 0.8;
-		double cs_f = 4.718;
-		double cs_r = 5.74562;
-		double dt = 1.0 / simulator_frequency_;
-
-		double x_dot = start.v * cos(start.yaw + start.slip_angle);
-		double y_dot = start.v * sin(start.yaw + start.slip_angle);
-		double v_dot = start.accel;
-		// double steer_angle_dot = start.steer_vel;
-		// double theta_dot = start.omega;123
-
-		double rear_val = g * p.l_r - start.accel * h_cg;
-		double front_val = g * p.l_f + start.accel * h_cg;
-
-		// double vel_ratio, first_term;
-
-		// vel_ratio = start.omega / start.v;
-		// first_term = friction_coeff / (start.v * (p.l_f + p.l_r));
-
-		double omega_dot =
-			(friction_coeff * p.mass / (p.I_z * (p.l_f + p.l_r))) *
-			(p.l_f * cs_f * start.steer * (rear_val) + start.slip_angle * (p.l_r * cs_r * (front_val)-p.l_f * cs_f * (rear_val)) -
-			 (start.omega / start.v) * (pow(p.l_f, 2) * cs_f * (rear_val) + pow(p.l_r, 2) * cs_r * (front_val)));
-
-		double slip_angle_dot =
-			(friction_coeff / (start.v * (p.l_r + p.l_f))) *
-				(cs_f * start.steer * rear_val - start.slip_angle * (cs_r * front_val + cs_f * rear_val) +
-				 (start.omega / start.v) * (cs_r * p.l_r * front_val - cs_f * p.l_f * rear_val)) -
-			start.omega;
-
-		control_msgs::msg::CarState end;
-		end.px = start.px + x_dot * dt;
-		end.py = start.py + y_dot * dt;
-		end.yaw = start.yaw + start.omega * dt;
-		end.slip_angle = start.slip_angle + slip_angle_dot * dt;
-
-		end.v = start.v + v_dot * dt;
-		end.vx = start.v * cos(start.slip_angle);
-		end.vy = start.v * sin(start.slip_angle);
-		end.omega = start.omega + omega_dot * dt;
-
-		end.a = start.accel;
-		end.ax = start.a * cos(start.slip_angle) - start.v * start.omega * sin(start.slip_angle);
-		end.ay = start.a * sin(start.slip_angle) + start.v * start.omega * cos(start.slip_angle);
-
-		end.accel = start.accel;
-		end.steer = start.steer;
-
-		if (end.v > p.speed_max)
-		{
-			end.v = p.speed_max;
-		}
-		else if (end.v < -p.speed_max)
-		{
-			end.v = -p.speed_max;
+			return update_k(start, p);
 		}
 
-		if (end.yaw > M_PI)
-		{
-			end.yaw -= 2 * M_PI;
-		}
-		else if (end.yaw < -M_PI)
-		{
-			end.yaw += 2 * M_PI;
-		}
+		sim_msgs::msg::CarState end = start;
+		const double dt = 1.0 / simulator_frequency_;
 
-		while (end.slip_angle > M_PI)
-		{
-			end.slip_angle -= 2 * M_PI;
-		}
-		while (end.slip_angle < -M_PI)
-		{
-			end.slip_angle += 2 * M_PI;
-		}
+		const double kappa = (start.vw - start.vx) / start.vx;
+		const double alpha_f = -std::atan2(start.vy + p.l_f * start.r, start.vx) + start.steer;
+		const double alpha_r = -std::atan2(start.vy - p.l_r * start.r, start.vx);
 
-		return end;
-	}
+		const double F_fx = p.D_xf * std::sin(p.C_xf * std::atan(p.B_xf * kappa)) * p.Mu_x;
+		const double F_rx = p.D_xr * std::sin(p.C_xr * std::atan(p.B_xr * kappa)) * p.Mu_x;
+		const double F_fy = p.D_yf * std::sin(p.C_yf * std::atan(p.B_yf * alpha_f)) * p.Mu_y;
+		const double F_ry = p.D_yr * std::sin(p.C_yr * std::atan(p.B_yr * alpha_r)) * p.Mu_y;
 
-	// Update car state
-	control_msgs::msg::CarState updateStatePacejka(control_msgs::msg::CarState &start, CarParams car_params)
-	{
-		if (abs(start.v) < 1.0e-8)
-		{
-			return update_k(start, start.accel, start.steer_vel, car_params, 1.0 / simulator_frequency_);
-		}
-		// Implement the update function for car
-		control_msgs::msg::CarState end;
-		double dt = 1.0 / simulator_frequency_;
-		double a_f = -atan2(start.vy + car_params.l_f * start.omega, start.vx) + start.steer;
-		double F_fy = car_params.D_f * sin(car_params.C_f * atan(car_params.B_f * a_f));
-		double a_r = -atan2(start.vy - car_params.l_r * start.omega, start.vx);
-		double F_ry = car_params.D_r * sin(car_params.C_r * atan(car_params.B_r * a_r));
+		const double x_dot = start.vx * std::cos(start.yaw) - start.vy * std::sin(start.yaw);
+		const double y_dot = start.vx * std::sin(start.yaw) + start.vy * std::cos(start.yaw);
+		const double yaw_dot = start.r;
+		const double vx_dot = (F_rx + F_fx * std::cos(start.steer) - F_fy * std::sin(start.steer)) / p.mass + start.vy * start.r;
+		const double vy_dot = (F_fx * std::sin(start.steer) + F_ry + F_fy * std::cos(start.steer)) / p.mass - start.vx * start.r;
+		const double r_dot = (F_fx * std::sin(start.steer) + F_fy * (std::cos(start.steer)) * p.l_f - F_ry * p.l_r) / p.I_z;
 
-		double x_dot = start.v * cos(start.yaw + start.slip_angle);
-		double y_dot = start.v * sin(start.yaw + start.slip_angle);
-		double yaw_dot = start.omega;
-		double slip_angle_dot = ((F_fy + F_ry) / (car_params.mass * start.v)) - start.omega;
-		double v_dot = start.a;
-		double omega_dot = (car_params.l_f * F_fy * cos(start.steer) - car_params.l_r * F_ry) / car_params.I_z;
+		const double tau_motor_wheel = p.motor_torque_constant * start.iq;
+		const double tau_tire = p.wheel_radius * (F_fx + F_rx);
+		const double tau_loss = p.coulomb_friction * std::copysign(1.0, start.vw) + p.viscous_friction * start.vw;
+		const double vw_dot = (p.wheel_radius / p.power_train_inertia) * (tau_motor_wheel - tau_tire - tau_loss);
 
 		end.px = start.px + x_dot * dt;
 		end.py = start.py + y_dot * dt;
-		end.yaw = start.yaw + yaw_dot * dt;
-		end.slip_angle = start.slip_angle + slip_angle_dot * dt;
-
-		end.v = start.v + v_dot * dt;
-		end.vx = start.v * cos(start.slip_angle);
-		end.vy = start.v * sin(start.slip_angle);
-		end.omega = start.omega + omega_dot * dt;
-
-		end.a = start.accel;
-		end.ax = start.a * cos(start.slip_angle) - start.v * start.omega * sin(start.slip_angle);
-		end.ay = start.a * sin(start.slip_angle) + start.v * start.omega * cos(start.slip_angle);
-
-		end.accel = start.accel;
-		end.steer = start.steer;
-
-		if (end.v > car_params.speed_max)
-		{
-			end.v = car_params.speed_max;
-		}
-		else if (end.v < -car_params.speed_max)
-		{
-			end.v = -car_params.speed_max;
-		}
-
-		if (end.yaw > M_PI)
-		{
-			end.yaw -= 2 * M_PI;
-		}
-		else if (end.yaw < -M_PI)
-		{
-			end.yaw += 2 * M_PI;
-		}
-
-		while (end.slip_angle > M_PI)
-		{
-			end.slip_angle -= 2 * M_PI;
-		}
-		while (end.slip_angle < -M_PI)
-		{
-			end.slip_angle += 2 * M_PI;
-		}
-
-		if (state_noise_mode_)
-		{
-			end.px += gen_noise(0.0001);
-			end.py += gen_noise(0.0001);
-			end.yaw += gen_noise(0.0001);
-			end.v += gen_noise(0.0001);
-			end.vx += gen_noise(0.0001);
-			end.vy += gen_noise(0.0001);
-			end.omega += gen_noise(0.0001);
-			end.a += gen_noise(0.0001);
-			end.ax += gen_noise(0.0001);
-			end.ay += gen_noise(0.0001);
-			end.accel += gen_noise(0.0001);
-			end.steer += gen_noise(0.0001);
-			end.slip_angle += gen_noise(0.01);
-		}
+		end.yaw = wrapAngle(start.yaw + yaw_dot * dt);
+		end.vx = start.vx + vx_dot * dt;
+		end.vy = start.vy + vy_dot * dt;
+		end.r = start.r + r_dot * dt;
+		end.vw = start.vw + vw_dot * dt;
+		end.ax = vx_dot;
+		end.ay = vy_dot;
+		end.slip_angle = std::atan2(end.vy, end.vx);
+		end.slip_rate = kappa;
 
 		return end;
 	}
@@ -873,31 +533,15 @@ public:
 
 		map_exists_ = true;
 	}
-
-	// Callback for center path
-	void centerPathCallback(const nav_msgs::msg::Path::SharedPtr msg)
+	// Publish state of car0
+	void pub_state()
 	{
-		tf2::Quaternion q(
-			msg->poses[1].pose.orientation.x,
-			msg->poses[1].pose.orientation.y,
-			msg->poses[1].pose.orientation.z,
-			msg->poses[1].pose.orientation.w);
-		tf2::Matrix3x3 m(q);
-		double roll, pitch, yaw;
-		m.getRPY(roll, pitch, yaw);
-		int last_idx = msg->poses.size() - 3;
-		init_car_state0_.px = msg->poses[last_idx].pose.position.x;
-		init_car_state0_.py = msg->poses[last_idx].pose.position.y;
-		init_car_state0_.yaw = yaw;
-
-		// is_pose_init_ = true;
-		receive_start_pose_ = true;
+		state0_pub_->publish(car_state0_);
 	}
-
 	// Publish scan data
-	void pub_scan(const control_msgs::msg::CarState &state,
+	void pub_scan(const sim_msgs::msg::CarState &state,
 				  const std::string &scan_frame,
-				//   std::vector<float> &scan_data_float,
+				  //   std::vector<float> &scan_data_float,
 				  rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan_pub,
 				  sensor_msgs::msg::LaserScan &scan_msg_data)
 	{
@@ -908,11 +552,14 @@ public:
 
 		Pose2D scan_pose;
 		double scan_distance_to_base_link = 0.12;
-		if (scan_noise_mode_) {
+		if (scan_noise_mode_)
+		{
 			scan_pose.x = state.px + scan_distance_to_base_link * cos(state.yaw) + gen_noise(0.001);
 			scan_pose.y = state.py + scan_distance_to_base_link * sin(state.yaw) + gen_noise(0.001);
 			scan_pose.theta = state.yaw + gen_noise(0.01);
-		} else {
+		}
+		else
+		{
 			scan_pose.x = state.px + scan_distance_to_base_link * cos(state.yaw);
 			scan_pose.y = state.py + scan_distance_to_base_link * sin(state.yaw);
 			scan_pose.theta = state.yaw;
@@ -924,29 +571,33 @@ public:
 		const double inc = scan_simulator_.get_angle_increment();
 		if (scan_msg_data.header.frame_id != scan_frame ||
 			scan_msg_data.angle_increment != inc ||
-			scan_msg_data.angle_min != -fov/2 ||
-			scan_msg_data.angle_max !=  fov/2) {
+			scan_msg_data.angle_min != -fov / 2 ||
+			scan_msg_data.angle_max != fov / 2)
+		{
 
 			scan_msg_data.header.frame_id = scan_frame;
 			scan_msg_data.angle_min = -fov / 2;
-			scan_msg_data.angle_max =  fov / 2;
+			scan_msg_data.angle_max = fov / 2;
 			scan_msg_data.angle_increment = inc;
 			scan_msg_data.range_max = 10.0;
 			scan_msg_data.range_min = 0.1;
 			scan_msg_data.time_increment = 0.0;
-			scan_msg_data.scan_time = 1.0 / pub_frequency_;
+			scan_msg_data.scan_time = 1.0 / odom_frequency_;
 		}
 
-		if (scan_msg_data.ranges.size() != n) {
+		if (scan_msg_data.ranges.size() != n)
+		{
 			scan_msg_data.ranges.resize(n);
 		}
-		if (scan_msg_data.intensities.size() != n) {
+		if (scan_msg_data.intensities.size() != n)
+		{
 			scan_msg_data.intensities.assign(n, 0.0f);
 		}
 
 		std::transform(scan_data.begin(), scan_data.end(),
-						scan_msg_data.ranges.begin(),
-						[](double d){ return static_cast<float>(d); });
+					   scan_msg_data.ranges.begin(),
+					   [](double d)
+					   { return static_cast<float>(d); });
 
 		scan_msg_data.header.stamp = this->get_clock()->now();
 		scan_pub->publish(scan_msg_data);
@@ -957,66 +608,62 @@ public:
 		return n01_(rng_) * std_dev;
 	}
 
-	// bool check_collision(const sensor_msgs::msg::LaserScan &scan_data)
-	// {
-	// 	// scan_coordinates.clear();
-	// 	for (size_t i = 0; i < scan_data.ranges.size(); i++)
-	// 	{
-	// 		float angle = scan_data.angle_min + i * scan_data.angle_increment;
-	// 		float x = scan_data.ranges[i] * cos(angle);
-	// 		float y = scan_data.ranges[i] * sin(angle);
-
-	// 		if (x > x_min && x < x_max && y > y_min && y < y_max)
-	// 		{
-	// 			return true;
-	// 		}
-	// 	}
-	// 	return false;
-	// }
-	bool check_collision(const sensor_msgs::msg::LaserScan& s)
+	bool check_collision(const sensor_msgs::msg::LaserScan &s)
 	{
 		size_t step = 4;
-		if (s.ranges.empty() || s.angle_increment == 0.0f) return false;
+		if (s.ranges.empty() || s.angle_increment == 0.0f)
+			return false;
 
 		// Angle window that actually sees the box (conservative)
 		float a0 = s.angle_min, inc = s.angle_increment;
 		float a1 = a0 + (s.ranges.size() - 1) * inc;
-		auto A = std::array<float,4>{
+		auto A = std::array<float, 4>{
 			std::atan2(y_min, x_min), std::atan2(y_min, x_max),
-			std::atan2(y_max, x_min), std::atan2(y_max, x_max)
-		};
+			std::atan2(y_max, x_min), std::atan2(y_max, x_max)};
 		float th_min = std::max(*std::min_element(A.begin(), A.end()), a0);
 		float th_max = std::min(*std::max_element(A.begin(), A.end()), a1);
-		if (th_min > th_max) return false;
+		if (th_min > th_max)
+			return false;
 
 		// Radial window [r_min, r_max] from origin to box (conservative)
-		auto clamp = [](float v, float lo, float hi){ return std::max(lo, std::min(v, hi)); };
+		auto clamp = [](float v, float lo, float hi)
+		{ return std::max(lo, std::min(v, hi)); };
 		float nx = clamp(0.0f, x_min, x_max), ny = clamp(0.0f, y_min, y_max);
-		float r_min = std::sqrt(nx*nx + ny*ny);
-		float r_max = std::sqrt(std::max({x_min*x_min + y_min*y_min,
-										x_min*x_min + y_max*y_max,
-										x_max*x_max + y_min*y_min,
-										x_max*x_max + y_max*y_max}));
+		float r_min = std::sqrt(nx * nx + ny * ny);
+		float r_max = std::sqrt(std::max({x_min * x_min + y_min * y_min,
+										  x_min * x_min + y_max * y_max,
+										  x_max * x_max + y_min * y_min,
+										  x_max * x_max + y_max * y_max}));
 
 		// Index window
-		size_t i0 = (size_t)std::max<int>(0, (int)std::ceil((th_min - a0)/inc));
-		size_t i1 = (size_t)std::min<int>(s.ranges.size()-1, (int)std::floor((th_max - a0)/inc));
-		if (i0 > i1) return false;
+		size_t i0 = (size_t)std::max<int>(0, (int)std::ceil((th_min - a0) / inc));
+		size_t i1 = (size_t)std::min<int>(s.ranges.size() - 1, (int)std::floor((th_max - a0) / inc));
+		if (i0 > i1)
+			return false;
 
 		// Incremental rotation (one sin/cos call per loop step)
-		float ang = a0 + i0*inc;
-		float c = std::cos(ang),  sn = std::sin(ang);
+		float ang = a0 + i0 * inc;
+		float c = std::cos(ang), sn = std::sin(ang);
 		float cc = std::cos(inc), ss = std::sin(inc);
 
-		auto rot_next = [&](size_t n){
-			while(n--) { float nc = c*cc - sn*ss, ns = sn*cc + c*ss; c = nc; sn = ns; }
+		auto rot_next = [&](size_t n)
+		{
+			while (n--)
+			{
+				float nc = c * cc - sn * ss, ns = sn * cc + c * ss;
+				c = nc;
+				sn = ns;
+			}
 		};
 
-		for (size_t i = i0; i <= i1; i += step) {
+		for (size_t i = i0; i <= i1; i += step)
+		{
 			float r = s.ranges[i];
-			if (std::isfinite(r) && r > 0.0f && r >= r_min && r <= r_max) {
+			if (std::isfinite(r) && r > 0.0f && r >= r_min && r <= r_max)
+			{
 				float x = r * c, y = r * sn;
-				if (x > x_min && x < x_max && y > y_min && y < y_max) return true;
+				if (x > x_min && x < x_max && y > y_min && y < y_max)
+					return true;
 			}
 			rot_next(step);
 		}
@@ -1033,16 +680,14 @@ public:
 	}
 
 	void pub_odom(
-		const control_msgs::msg::CarState &state,
+		const sim_msgs::msg::CarState &state,
 		const std::string &frame_id,
-		const std::string &child_frame_id,
 		rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub)
 	{
 		nav_msgs::msg::Odometry odom_msg;
 		odom_msg.header.stamp = this->get_clock()->now();
 		// odom_msg.header.frame_id = "odom";
 		odom_msg.header.frame_id = frame_id;
-		odom_msg.child_frame_id = child_frame_id;
 		odom_msg.pose.pose.position.x = state.px;
 		odom_msg.pose.pose.position.y = state.py;
 		odom_msg.pose.pose.position.z = 0.0;
@@ -1055,8 +700,32 @@ public:
 		odom_msg.twist.twist.linear.z = 0.0;
 		odom_msg.twist.twist.angular.x = 0.0;
 		odom_msg.twist.twist.angular.y = 0.0;
-		odom_msg.twist.twist.angular.z = state.omega;
+		odom_msg.twist.twist.angular.z = state.r;
 		odom_pub->publish(odom_msg);
+	}
+
+	void pub_imu(
+		const sim_msgs::msg::CarState &state,
+		const std::string &frame_id,
+		rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub)
+	{
+		sensor_msgs::msg::Imu imu_msg;
+		imu_msg.header.stamp = this->get_clock()->now();
+		imu_msg.header.frame_id = frame_id;
+
+		tf2::Quaternion q;
+		q.setRPY(0, 0, state.yaw);
+		imu_msg.orientation = tf2::toMsg(q);
+
+		imu_msg.angular_velocity.x = 0.0;
+		imu_msg.angular_velocity.y = 0.0;
+		imu_msg.angular_velocity.z = state.r;
+
+		imu_msg.linear_acceleration.x = state.ax;
+		imu_msg.linear_acceleration.y = state.ay;
+		imu_msg.linear_acceleration.z = 0.0;
+
+		imu_pub->publish(imu_msg);
 	}
 };
 
@@ -1067,5 +736,3 @@ int main(int argc, char *argv[])
 	rclcpp::shutdown();
 	return 0;
 }
-
-

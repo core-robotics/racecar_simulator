@@ -1,0 +1,15 @@
+float64 px
+float64 py
+float64 yaw
+float64 vx
+float64 vy
+float64 r
+float64 vw
+float64 ax
+float64 ay
+float64 slip_angle
+float64 slip_rate
+float64 accel_cmd
+float64 iq
+float64 steer
+float64 steer_vel

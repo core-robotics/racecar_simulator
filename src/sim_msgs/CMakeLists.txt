@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(control_msgs)
+project(sim_msgs)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -16,17 +16,6 @@ find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/CarState.msg"
-  "msg/Debug.msg"
-  "msg/Gps.msg"
-  "msg/Obstacle.msg"
-  "msg/Rpy.msg"
-  "msg/Waypoint.msg"
-  "msg/WaypointArray.msg"
-  "srv/EncodeInitState.srv"
-  "srv/GlobalPath.srv"
-  "srv/Observation.srv"
-  "srv/Reset.srv"
-  "srv/SyncControl.srv"
   DEPENDENCIES std_msgs geometry_msgs # Add packages that above messages depend on, in this case geometry_msgs for Sphere.msg
 )
 

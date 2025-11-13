@@ -9,22 +9,15 @@
 
   <!-- Dependencies -->
   <buildtool_depend>ament_cmake</buildtool_depend>
-  <!--depend>control_msgs</depend-->
-  <exec_depend>rclcpp</exec_depend>
-  <exec_depend>std_msgs</exec_depend>
-  <exec_depend>geometry_msgs</exec_depend>
-  <exec_depend>ackermann_msgs</exec_depend>
-  <exec_depend>sensor_msgs</exec_depend>
-  <exec_depend>tf2_ros</exec_depend>
-  <exec_depend>visualization_msgs</exec_depend>
-  <exec_depend>control_msgs</exec_depend>
-  <exec_depend>nav_msgs</exec_depend>
-
-
-  <!-- Test Dependencies -->
-  <!-- Uncomment and add if you have test dependencies -->
-  <!-- <test_depend>ament_lint_auto</test_depend>
-  <test_depend>ament_lint_common</test_depend> -->
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>ackermann_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>tf2_ros</depend>
+  <depend>visualization_msgs</depend>
+  <depend>sim_msgs</depend>
+  <depend>nav_msgs</depend>
 
   <export>
     <build_type>ament_cmake</build_type>
