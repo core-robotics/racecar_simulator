@@ -20,6 +20,7 @@ racecar_simulator:
     collision_topic0: "collision0"
     odom_topic0: "odom0"
     imu_topic0: "imu0"
+    pose_topic0: "pose0"
     base_frame0: "base_link0"
     scan_frame0: "laser_model0"
 

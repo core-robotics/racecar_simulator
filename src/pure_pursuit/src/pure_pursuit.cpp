@@ -10,14 +10,14 @@ class PurePursuitNode : public rclcpp::Node {
 public:
   PurePursuitNode() : Node("pure_pursuit_node") {
     // Params
-    lookahead_ = declare_parameter<double>("lookahead", 1.5);     // [m]
-    wheelbase_ = declare_parameter<double>("wheelbase", 0.34);    // [m]
-    v_min_     = declare_parameter<double>("speed_min", 0.5);     // [m/s]
-    v_max_     = declare_parameter<double>("speed_max", 6.0);     // [m/s]
-    k_speed_   = declare_parameter<double>("k_speed",  4.5);      // curvature → speed
-    k_accel_   = declare_parameter<double>("k_accel",  4.0);      // P gain for (v_ref - v)
-    a_min_     = declare_parameter<double>("accel_min",-20.0);     // [m/s^2]
-    a_max_     = declare_parameter<double>("accel_max", 20.0);     // [m/s^2]
+    lookahead_ = declare_parameter<double>("lookahead", 3.0);     // [m]
+    wheelbase_ = declare_parameter<double>("wheelbase", 0.46);    // [m]
+    v_min_     = declare_parameter<double>("speed_min", 0.7);     // [m/s]
+    v_max_     = declare_parameter<double>("speed_max", 5.0);     // [m/s]
+    k_speed_   = declare_parameter<double>("k_speed",  2.5);      // curvature → speed
+    k_accel_   = declare_parameter<double>("k_accel",  2.0);      // P gain for (v_ref - v)
+    a_min_     = declare_parameter<double>("accel_min",-15.0);     // [m/s^2]
+    a_max_     = declare_parameter<double>("accel_max", 15.0);     // [m/s^2]
     center_path_topic_ = declare_parameter<std::string>("center_path_topic", "center_path");
     left_path_topic_   = declare_parameter<std::string>("left_boundary", "left_boundary");
     right_path_topic_  = declare_parameter<std::string>("right_boundary","right_boundary");

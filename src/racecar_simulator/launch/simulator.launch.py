@@ -114,22 +114,40 @@ def generate_launch_description():
         output="screen",
         # parameters=[{"use_sim_time": True}],
     )
-
-    racecar_stat_node = Node(
-        package="racecar_simulator",
-        executable="race_stat",
-        name="race_stat",
+    
+    pure_pursuit_node = Node(
+        package="pure_pursuit",
+        executable="pure_pursuit",
+        name="pure_pursuit",
         output="screen",
         parameters=[
-            race_stat_config_file,
+            {"lookahead": 3.0},
+            {"wheelbase": 0.46},
+            {"speed_min": 0.7},
+            {"speed_max": 5.0},
+            {"k_speed": 2.5},
+            {"k_accel": 2.0},
+            {"accel_min": -15.0},
+            {"accel_max": 15.0},
         ],
     )
+
+    # racecar_stat_node = Node(
+    #     package="racecar_simulator",
+    #     executable="race_stat",
+    #     name="race_stat",
+    #     output="screen",
+    #     parameters=[
+    #         race_stat_config_file,
+    #     ],
+    # )
 
     ld.add_action(rviz_node)
     ld.add_action(racecar_node)
     ld.add_action(map_publisher_node)
     ld.add_action(robot0_state_publisher_node)
-    ld.add_action(racecar_stat_node)
+    ld.add_action(pure_pursuit_node)
+    # ld.add_action(racecar_stat_node)
     # ld.add_action(robot1_state_publisher_node)
 
     return ld

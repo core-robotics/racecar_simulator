@@ -77,6 +77,7 @@ private:
 	rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr collision0_pub_;
 	rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom0_pub_;
 	rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu0_pub_;
+	rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose0_pub_;
 
 	sim_msgs::msg::CarState car_state0_;
 
@@ -98,7 +99,7 @@ private:
 	double motor_p_, motor_i_, motor_d_;
 	double motor_prev_e_, motor_integral_;
 	int vehicle_model0_;
-	std::string drive_topic0_, collision_topic0_, state_topic0_, scan_topic0_, odom_topic0_, imu_topic0_;
+	std::string drive_topic0_, collision_topic0_, state_topic0_, scan_topic0_, odom_topic0_, imu_topic0_, pose_topic0_;
 	std::string base_frame0_, scan_frame0_;
 	std::string pgm_file_path_, yaml_file_path_;
 	double simulator_frequency_, odom_frequency_, imu_frequency_, scan_frequency_;
@@ -167,6 +168,7 @@ public:
 		this->declare_parameter("collision_topic0", "collision0");
 		this->declare_parameter("odom_topic0", "odom0");
 		this->declare_parameter("imu_topic0", "imu0");
+		this->declare_parameter("pose_topic0", "pose0");
 		this->declare_parameter("base_frame0", "base_link0");
 		this->declare_parameter("scan_frame0", "laser_model0");
 		this->declare_parameter("mass0", 5.1);
@@ -200,6 +202,7 @@ public:
 		this->get_parameter("collision_topic0", collision_topic0_);
 		this->get_parameter("odom_topic0", odom_topic0_);
 		this->get_parameter("imu_topic0", imu_topic0_);
+		this->get_parameter("pose_topic0", pose_topic0_);
 		this->get_parameter("base_frame0", base_frame0_);
 		this->get_parameter("scan_frame0", scan_frame0_);
 		this->get_parameter("mass0", car0_params_.mass);
@@ -272,6 +275,7 @@ public:
 		collision0_pub_ = this->create_publisher<std_msgs::msg::Bool>(collision_topic0_, r_qos);
 		odom0_pub_ = this->create_publisher<nav_msgs::msg::Odometry>(odom_topic0_, r_qos);
 		imu0_pub_ = this->create_publisher<sensor_msgs::msg::Imu>(imu_topic0_, r_qos);
+		pose0_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>(pose_topic0_, r_qos);
 
 		scan_simulator_ = ScanSimulator2D(scan_beams_, scan_fov_, scan_std_dev_);
 		// Initialize simulator
@@ -333,6 +337,7 @@ public:
 	void odomLoop()
 	{
 		pub_odom(car_state0_, base_frame0_, odom0_pub_);
+		pub_pose(car_state0_, pose0_pub_);
 	}
 	void imuLoop()
 	{
@@ -443,6 +448,7 @@ public:
 		end.vx = vx;
 		end.vy = 0.0;
 		end.r = yaw_dot;
+		end.vw = vx;
 		return end;
 	}
 
@@ -458,16 +464,16 @@ public:
 		sim_msgs::msg::CarState end = start;
 		const double dt = 1.0 / simulator_frequency_;
 
-		if (std::abs(start.vx) < 0.2)
+		if (std::abs(start.vx) < 0.01)
 		{
 			return update_k(start, p);
 		}
 
 		const double L = p.l_f + p.l_r;
-		const double vx_safe = start.vx;
-		const double kappa = (start.vw - vx_safe) / vx_safe;
-		const double alpha_f = std::atan2(start.vy + p.l_f * start.r, vx_safe) - start.steer;
-		const double alpha_r = std::atan2(start.vy - p.l_r * start.r, vx_safe);
+		const double vx_abs = std::abs(start.vx);
+		const double kappa = (start.vw - start.vx) / vx_abs;
+		const double alpha_f = std::atan2(start.vy + p.l_f * start.r, vx_abs) - start.steer;
+		const double alpha_r = std::atan2(start.vy - p.l_r * start.r, vx_abs);
 		const double Fn_f = p.mass * 9.81 * (p.l_r / L);
 		const double Fn_r = p.mass * 9.81 * (p.l_f / L);
 
@@ -475,17 +481,17 @@ public:
 		const double Fx_f = Fx_total * (p.l_r / L);
 		const double Fx_r = Fx_total * (p.l_f / L);
 
-		const double F_drag = p.Cd0 * sign0(vx_safe) + p.Cd1 * vx_safe + p.Cd2 * vx_safe * vx_safe;
+		const double F_drag = p.Cd0 * sign0(start.vx) + p.Cd1 * start.vx + p.Cd2 * start.vx * start.vx;
 		const double Fy_f = -Fn_f * p.D_f * std::sin(p.C_f * std::atan(p.B_f * alpha_f));
 		const double Fy_r = -Fn_r * p.D_r * std::sin(p.C_r * std::atan(p.B_r * alpha_r));
 
 		const double iq = pid_controller_.compute(start.accel_cmd, start.ax, dt);
 
-		const double x_dot = vx_safe * std::cos(start.yaw) - start.vy * std::sin(start.yaw);
-		const double y_dot = vx_safe * std::sin(start.yaw) + start.vy * std::cos(start.yaw);
+		const double x_dot = start.vx * std::cos(start.yaw) - start.vy * std::sin(start.yaw);
+		const double y_dot = start.vx * std::sin(start.yaw) + start.vy * std::cos(start.yaw);
 		const double yaw_dot = start.r;
 		const double vx_dot = (Fx_r + Fx_f * std::cos(start.steer) - Fy_f * std::sin(start.steer) - F_drag) / p.mass + start.vy * start.r;
-		const double vy_dot = (Fx_f * std::sin(start.steer) + Fy_r + Fy_f * std::cos(start.steer)) / p.mass - vx_safe * start.r;
+		const double vy_dot = (Fx_f * std::sin(start.steer) + Fy_r + Fy_f * std::cos(start.steer)) / p.mass - start.vx * start.r;
 		const double r_dot = ((Fx_f * std::sin(start.steer) + Fy_f * std::cos(start.steer)) * p.l_f - Fy_r * p.l_r) / p.I_z;
 		const double vw_dot = (p.wheel_radius / p.power_train_inertia) *
 							  (p.motor_torque_constant * iq - p.wheel_radius * (Fx_f + Fx_r) -
@@ -495,13 +501,13 @@ public:
 		end.px = start.px + x_dot * dt;
 		end.py = start.py + y_dot * dt;
 		end.yaw = wrapAngle(start.yaw + yaw_dot * dt);
-		end.vx = vx_safe + vx_dot * dt;
+		end.vx = start.vx + vx_dot * dt;
 		end.vy = start.vy + vy_dot * dt;
 		end.r = start.r + r_dot * dt;
 		end.vw = start.vw + vw_dot * dt;
 		end.ax = vx_dot - start.r * start.vy;
-		end.ay = vy_dot + start.r * vx_safe;
-		end.slip_angle = std::atan2(end.vy, vx_safe);
+		end.ay = vy_dot + start.r * start.vx;
+		end.slip_angle = std::atan2(end.vy, start.vx);
 		end.slip_rate = kappa;
 		end.iq = iq;
 
@@ -719,8 +725,8 @@ public:
 		q.setRPY(0, 0, state.yaw);
 		odom_msg.pose.pose.orientation = tf2::toMsg(q);
 
-		odom_msg.twist.twist.linear.x = state.vx;
-		odom_msg.twist.twist.linear.y = state.vy;
+		odom_msg.twist.twist.linear.x = state.vw;
+		odom_msg.twist.twist.linear.y = 0.0;
 		odom_msg.twist.twist.linear.z = 0.0;
 		odom_msg.twist.twist.angular.x = 0.0;
 		odom_msg.twist.twist.angular.y = 0.0;
@@ -750,6 +756,23 @@ public:
 		imu_msg.linear_acceleration.z = 0.0;
 
 		imu_pub->publish(imu_msg);
+	}
+
+	void pub_pose(
+		const sim_msgs::msg::CarState &state,
+		rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub)
+	{
+		geometry_msgs::msg::PoseStamped pose_msg;
+		pose_msg.header.stamp = this->get_clock()->now();
+		pose_msg.header.frame_id = "map";
+		pose_msg.pose.position.x = state.px;
+		pose_msg.pose.position.y = state.py;
+		pose_msg.pose.position.z = 0.0;
+		tf2::Quaternion q;
+		q.setRPY(0, 0, state.yaw);
+		pose_msg.pose.orientation = tf2::toMsg(q);
+
+		pose_pub->publish(pose_msg);
 	}
 };
 
