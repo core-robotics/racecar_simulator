@@ -70,6 +70,7 @@ ament_target_dependencies(race_stat
   visualization_msgs
   tf2_ros
   tf2_geometry_msgs
+  ackermann_msgs
   yaml-cpp
 )
 

@@ -4,21 +4,24 @@ race_stat:
     odom_topic: "odom0"
     collision_topic: "collision0"
     path_topic: "center_path"
+    cmd_topic: "ackermann_cmd0"
 
     # Frames / HUD
     text_frame: "map"
     fixed_frame: "map"
-    text_anchor_x: 4.0
-    text_anchor_y: 3.0
+    text_anchor_x: -5.0
+    text_anchor_y: -21.0
     text_scale: 1.0
 
     # Lap timing behavior
     start_on_first_cross: true
-    one_sided_forward: false
-    sf_cross_epsilon: 0.30
 
     # Debounce / timing
-    min_lap_time: 1.0
+    min_lap_time: 1.0          
+    eval_duration_sec: 180.0   
+
+    # SF crossing
+    sf_radius: 1.5            
 
     # Node rate
-    update_rate_hz: 40.0
+    update_rate_hz: 50.0
