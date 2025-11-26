@@ -1,4 +1,4 @@
-// ROS2 lap stats node: 3min eval, SF crossing, lap times & lap collisions
+// ROS2 lap stats node: 3min eval, index-based SF crossing, lap times & collisions
 
 #include <rclcpp/rclcpp.hpp>
 #include <builtin_interfaces/msg/time.hpp>
@@ -22,21 +22,20 @@ class RaceStatsNode : public rclcpp::Node
 public:
   RaceStatsNode() : Node("race_stats_node")
   {
-    // Parameters
-    odom_topic_          = declare_parameter<std::string>("odom_topic", "odom0");
-    collision_topic_     = declare_parameter<std::string>("collision_topic", "collision0");
-    path_topic_          = declare_parameter<std::string>("path_topic", "center_path");
-    cmd_topic_           = declare_parameter<std::string>("cmd_topic", "ackermann_cmd0");
-    text_frame_          = declare_parameter<std::string>("text_frame", "map");
-    fixed_frame_         = declare_parameter<std::string>("fixed_frame", "map");
-    text_anchor_x_       = declare_parameter<double>("text_anchor_x", 0.0);
-    text_anchor_y_       = declare_parameter<double>("text_anchor_y", 0.0);
-    text_scale_          = declare_parameter<double>("text_scale", 0.25);
-    min_lap_time_        = declare_parameter<double>("min_lap_time", 3.0);
-    update_rate_hz_      = declare_parameter<double>("update_rate_hz", 10.0);
-    start_on_first_cross_= declare_parameter<bool>("start_on_first_cross", true);
-    eval_duration_sec_   = declare_parameter<double>("eval_duration_sec", 180.0);
-    sf_radius_           = declare_parameter<double>("sf_radius", 1.0);
+    odom_topic_           = declare_parameter<std::string>("odom_topic", "odom0");
+    collision_topic_      = declare_parameter<std::string>("collision_topic", "collision0");
+    path_topic_           = declare_parameter<std::string>("path_topic", "center_path");
+    cmd_topic_            = declare_parameter<std::string>("cmd_topic", "ackermann_cmd0");
+    text_frame_           = declare_parameter<std::string>("text_frame", "map");
+    fixed_frame_          = declare_parameter<std::string>("fixed_frame", "map");
+    text_anchor_x_        = declare_parameter<double>("text_anchor_x", 0.0);
+    text_anchor_y_        = declare_parameter<double>("text_anchor_y", 0.0);
+    text_scale_           = declare_parameter<double>("text_scale", 0.25);
+    min_lap_time_         = declare_parameter<double>("min_lap_time", 3.0);
+    update_rate_hz_       = declare_parameter<double>("update_rate_hz", 10.0);
+    start_on_first_cross_ = declare_parameter<bool>("start_on_first_cross", true);
+    eval_duration_sec_    = declare_parameter<double>("eval_duration_sec", 180.0);
+    sf_radius_            = declare_parameter<double>("sf_radius", 1.0);
 
     auto b_qos   = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort();
     auto r_t_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
@@ -57,7 +56,7 @@ public:
   }
 
 private:
-  // params / topics
+  // parameters / topics
   std::string odom_topic_, collision_topic_, path_topic_, cmd_topic_, text_frame_, fixed_frame_;
   double text_anchor_x_{0.0}, text_anchor_y_{0.0}, text_scale_{0.25};
   double min_lap_time_{3.0};
@@ -67,22 +66,29 @@ private:
   double eval_elapsed_sec_{0.0};
   double sf_radius_{1.0};
 
-  // ROS
+  // ROS interfaces
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
-  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr collision_sub_;
-  rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr     collision_sub_;
+  rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr     path_sub_;
   rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr cmd_sub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
 
-  // SF line (from path)
-  bool   have_path_{false};
+  // center path
+  std::vector<double> px_;
+  std::vector<double> py_;
+  int  path_size_{0};
+  bool have_path_{false};
+
+  // SF line
   bool   line_published_{false};
-  double p0x_{0.0}, p0y_{0.0};  // SF point
-  double tx_{0.0}, ty_{1.0};    // SF line direction
-  double n0x_{1.0}, n0y_{0.0};  // normal (path tangent)
-  bool   have_prev_sd_{false};
-  double prev_sd_{0.0};
+  double p0x_{0.0}, p0y_{0.0};
+  double tx_{0.0}, ty_{1.0};
+  double n0x_{1.0}, n0y_{0.0};
+
+  // nearest index tracking
+  bool have_prev_idx_{false};
+  int  prev_idx_{0};
 
   // stats
   int    lap_count_{0};
@@ -92,6 +98,8 @@ private:
 
   rclcpp::Time eval_start_time_{};
   rclcpp::Time lap_start_time_{};
+  rclcpp::Time last_cross_time_{};
+
   bool   eval_running_{false};
   bool   eval_finished_{false};
   bool   running_lap_{false};
@@ -109,30 +117,41 @@ private:
 
   void resetStatsForEval()
   {
-    lap_count_             = 0;
-    collision_count_       = 0;
-    current_lap_collisions_= 0;
-    prev_collision_        = false;
-    lap_start_time_        = rclcpp::Time(0, 0, get_clock()->get_clock_type());
-    last_lap_time_sec_     = 0.0;
-    best_lap_time_sec_     = std::numeric_limits<double>::infinity();
-    current_lap_time_sec_  = 0.0;
+    lap_count_              = 0;
+    collision_count_        = 0;
+    current_lap_collisions_ = 0;
+    prev_collision_         = false;
+    lap_start_time_         = rclcpp::Time(0, 0, get_clock()->get_clock_type());
+    last_cross_time_        = rclcpp::Time(0, 0, get_clock()->get_clock_type());
+    last_lap_time_sec_      = 0.0;
+    best_lap_time_sec_      = std::numeric_limits<double>::infinity();
+    current_lap_time_sec_   = 0.0;
     lap_times_.clear();
     lap_collisions_.clear();
-    have_prev_sd_          = false;
+    have_prev_idx_          = false;
   }
 
-  // set SF line from center_path (first segment)
   void onCenterPath(const nav_msgs::msg::Path::SharedPtr msg)
   {
     const auto &poses = msg->poses;
     if (poses.size() < 2)
       return;
 
-    p0x_ = poses[0].pose.position.x;
-    p0y_ = poses[0].pose.position.y;
-    double x1 = poses[1].pose.position.x;
-    double y1 = poses[1].pose.position.y;
+    px_.clear();
+    py_.clear();
+    px_.reserve(poses.size());
+    py_.reserve(poses.size());
+    for (const auto &ps : poses)
+    {
+      px_.push_back(ps.pose.position.x);
+      py_.push_back(ps.pose.position.y);
+    }
+    path_size_ = static_cast<int>(px_.size());
+
+    p0x_ = px_[0];
+    p0y_ = py_[0];
+    double x1 = px_[1];
+    double y1 = py_[1];
 
     double dx = x1 - p0x_;
     double dy = y1 - p0y_;
@@ -146,23 +165,16 @@ private:
 
     have_path_      = true;
     line_published_ = false;
-    have_prev_sd_   = false;
+    
   }
 
-  // signed distance to SF line
-  inline double signedDistSF(double x, double y) const
-  {
-    return (x - p0x_) * n0x_ + (y - p0y_) * n0y_;
-  }
-
-  // start eval on first cmd
   void onCmd(const ackermann_msgs::msg::AckermannDriveStamped::SharedPtr /*msg*/)
   {
     if (!eval_running_ && !eval_finished_)
     {
-      eval_start_time_   = this->get_clock()->now();
-      eval_running_      = true;
-      eval_elapsed_sec_  = 0.0;
+      eval_start_time_  = this->get_clock()->now();
+      eval_running_     = true;
+      eval_elapsed_sec_ = 0.0;
       resetStatsForEval();
       RCLCPP_INFO(this->get_logger(), "Evaluation window started (%.1f s)", eval_duration_sec_);
     }
@@ -172,7 +184,6 @@ private:
   {
     const auto now = this->get_clock()->now();
 
-    // eval timer
     if (eval_running_)
     {
       eval_elapsed_sec_ = (now - eval_start_time_).seconds();
@@ -191,26 +202,51 @@ private:
     if (eval_running_ && running_lap_)
       current_lap_time_sec_ = (now - lap_start_time_).seconds();
 
-    if (!have_path_)
+    if (!have_path_ || path_size_ == 0)
       return;
 
-    const double sd = signedDistSF(x, y);
-
-    if (!have_prev_sd_)
+    int    idx    = 0;
+    double best_d2 = std::numeric_limits<double>::infinity();
+    for (int i = 0; i < path_size_; ++i)
     {
-      prev_sd_     = sd;
-      have_prev_sd_= true;
-      return;
+      double dx = x - px_[i];
+      double dy = y - py_[i];
+      double d2 = dx * dx + dy * dy;
+      if (d2 < best_d2)
+      {
+        best_d2 = d2;
+        idx     = i;
+      }
+    }
+    // std::cout<< "prev_idx_: " << prev_idx_ << " idx: " << idx << " path size: " << path_size_ << std::endl;
+
+    if (!have_prev_idx_)
+    {
+      prev_idx_     = idx;
+      have_prev_idx_= true;
+      // std::cout<< "No previous index" << std::endl;
     }
 
-    // SF crossing: sign flip near SF point
     bool crossed = false;
-    const bool sign_flip = (prev_sd_ <= 0.0 && sd > 0.0) ||
-                           (prev_sd_ >= 0.0 && sd < 0.0);
-    if (sign_flip)
+    if (path_size_ >= 6)
     {
-      const double d_p0 = std::hypot(x - p0x_, y - p0y_);
-      if (d_p0 < sf_radius_)
+      int last_zone_start = path_size_ - 2;
+      bool was_in_last  = (prev_idx_ >= last_zone_start);
+      bool now_in_first = (idx <= 1);
+      if (was_in_last && now_in_first)
+        crossed = true;
+
+      // std::cout<< "last_zone_start: " << last_zone_start
+      //          << " was_in_last: " << was_in_last
+      //          << " now_in_first: " << now_in_first
+      //          << " crossed: " << crossed
+      //          << " path size: " << path_size_ << std::endl;
+    }
+    else
+    {
+      bool was_in_last  = (prev_idx_ >= path_size_ - 1);
+      bool now_in_first = (idx == 0);
+      if (was_in_last && now_in_first)
         crossed = true;
     }
 
@@ -235,24 +271,24 @@ private:
           if (lap_time < best_lap_time_sec_)
             best_lap_time_sec_ = lap_time;
           lap_count_++;
-          lap_start_time_        = now_t;
-          current_lap_collisions_= 0;
+          lap_start_time_         = now_t;
+          current_lap_collisions_ = 0;
           accepted = true;
         }
       }
       else if (start_on_first_cross_)
       {
-        running_lap_           = true;
-        lap_start_time_        = now_t;
-        current_lap_collisions_= 0;
-        accepted               = true;
+        running_lap_            = true;
+        lap_start_time_         = now_t;
+        current_lap_collisions_ = 0;
+        accepted                = true;
       }
 
       if (accepted)
         last_cross_time_ = now_t;
     }
 
-    prev_sd_ = sd;
+    prev_idx_ = idx;
   }
 
   void onCollision(const std_msgs::msg::Bool::SharedPtr msg)
@@ -290,9 +326,8 @@ private:
     std::ostringstream oss;
     oss.setf(std::ios::fixed);
     oss.precision(3);
-    oss << "Eval: " << eval_elapsed_sec_ << " / " << eval_duration_sec_ << " s\n"
-        << (eval_finished_ ? " (FINISHED)\n" : "\n")
-        // << "Lap count: " << lap_count_ << "\n"
+    oss << (eval_finished_ ? "(FINISHED)\n" : "(RUNNING)\n")
+        << "Eval: " << eval_elapsed_sec_ << " / " << eval_duration_sec_ << " s\n"
         << "Current lap: " << ((eval_running_ && running_lap_) ? current_lap_time_sec_ : 0.0) << " s\n"
         << "Current collisions: " << ((eval_running_ && running_lap_) ? current_lap_collisions_ : 0) << "\n";
 
@@ -302,8 +337,8 @@ private:
       for (size_t i = 0; i < lap_times_.size(); ++i)
       {
         int c = (i < lap_collisions_.size()) ? lap_collisions_[i] : 0;
-        oss << "  #" << (i + 1) << ": " << lap_times_[i]
-            << "  Collisions: " << c << "\n";
+        oss << " #" << (i + 1) << ": " << lap_times_[i]
+            << " Collisions: " << c << "\n";
       }
     }
 
@@ -312,23 +347,23 @@ private:
       return;
 
     visualization_msgs::msg::Marker text;
-    text.header.frame_id = text_frame_;
-    text.header.stamp    = stamp;
-    text.ns              = "race_stats";
-    text.id              = 1;
-    text.type            = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
-    text.action          = visualization_msgs::msg::Marker::ADD;
-    text.pose.position.x = text_anchor_x_;
-    text.pose.position.y = text_anchor_y_;
-    text.pose.position.z = 0.5;
-    text.pose.orientation.w = 1.0;
-    text.scale.z         = text_scale_;
-    text.color.a         = 1.0;
-    text.color.r         = 1.0;
-    text.color.g         = 1.0;
-    text.color.b         = 1.0;
-    text.lifetime        = rclcpp::Duration(0, 0);
-    text.text            = new_text;
+    text.header.frame_id      = text_frame_;
+    text.header.stamp         = stamp;
+    text.ns                   = "race_stats";
+    text.id                   = 1;
+    text.type                 = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+    text.action               = visualization_msgs::msg::Marker::ADD;
+    text.pose.position.x      = text_anchor_x_;
+    text.pose.position.y      = text_anchor_y_;
+    text.pose.position.z      = 0.5;
+    text.pose.orientation.w   = 1.0;
+    text.scale.z              = text_scale_;
+    text.color.a              = 1.0;
+    text.color.r              = 1.0;
+    text.color.g              = 1.0;
+    text.color.b              = 1.0;
+    text.lifetime             = rclcpp::Duration(0, 0);
+    text.text                 = new_text;
     arr.markers.push_back(text);
     last_text_ = new_text;
 
@@ -365,8 +400,6 @@ private:
 
     marker_pub_->publish(arr);
   }
-
-  rclcpp::Time last_cross_time_{};
 };
 
 int main(int argc, char **argv)
