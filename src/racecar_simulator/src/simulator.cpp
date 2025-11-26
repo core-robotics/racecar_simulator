@@ -112,6 +112,26 @@ private:
 	std::vector<float> scan_data_float0_;
 	sensor_msgs::msg::LaserScan scan_msg_data0_;
 
+	// ---- 3DM-CV7 100 Hz 기준 파라미터 ----
+	// const double ACC_NOISE_BASE  = 0.00208;      // [m/s^2]
+	// const double ACC_NOISE_K     = 2.69e-5;      // heteroscedastic
+	const double ACC_NOISE_BASE  = 0.2;      // [m/s^2]
+	const double ACC_NOISE_K     = 3.0e-1;      // heteroscedastic
+	const double ACC_BIAS_RW     = 2.9e-6;       // [m/s^2 / sqrt(s)]
+	const double ACC_TURNON_SIG  = 3.9e-4;       // [m/s^2]
+
+	// const double GYRO_NOISE_BASE = 0.00029;      // [rad/s]
+	// const double GYRO_NOISE_K    = 3.32e-5;      // heteroscedastic
+		const double GYRO_NOISE_BASE = 0.03;      // [rad/s]
+	const double GYRO_NOISE_K    = 4.0e-2;      // heteroscedastic
+	const double GYRO_BIAS_RW    = 1.2e-7;       // [rad/s / sqrt(s)]
+	const double GYRO_TURNON_SIG = 7.0e-5;       // [rad/s]
+
+	double bias_ax_{0.0};
+	double bias_ay_{0.0};
+	double bias_r_{0.0};
+	bool bias_initialized_{false};
+
 	bool map_exists_ = false;
 	nav_msgs::msg::OccupancyGrid original_map_;
 	nav_msgs::msg::OccupancyGrid current_map_;
@@ -633,11 +653,6 @@ public:
 		scan_pub->publish(scan_msg_data);
 	}
 
-	double gen_noise(double std_dev)
-	{
-		return n01_(rng_) * std_dev;
-	}
-
 	bool check_collision(const sensor_msgs::msg::LaserScan &s)
 	{
 		size_t step = 4;
@@ -725,13 +740,66 @@ public:
 		q.setRPY(0, 0, state.yaw);
 		odom_msg.pose.pose.orientation = tf2::toMsg(q);
 
-		odom_msg.twist.twist.linear.x = state.vw;
+		odom_msg.twist.twist.linear.x = gen_noise(0.01) + state.vw;
 		odom_msg.twist.twist.linear.y = 0.0;
 		odom_msg.twist.twist.linear.z = 0.0;
 		odom_msg.twist.twist.angular.x = 0.0;
 		odom_msg.twist.twist.angular.y = 0.0;
 		odom_msg.twist.twist.angular.z = state.r;
 		odom_pub->publish(odom_msg);
+	}
+	double gen_noise(double std_dev)
+	{
+		return n01_(rng_) * std_dev;
+	}
+	void update_bias_random_walk(double &bias, double sigma_rw, double dt)
+	{
+		double dw = gen_noise(sigma_rw * std::sqrt(dt));
+		bias += dw;
+	}
+	void init_biases_if_needed()
+	{
+		if (bias_initialized_) return;
+
+		bias_ax_ = gen_noise(ACC_TURNON_SIG);
+		bias_ay_ = gen_noise(ACC_TURNON_SIG);
+		bias_r_  = gen_noise(GYRO_TURNON_SIG);
+
+		bias_initialized_ = true;
+	}
+
+	void imu_noise(sensor_msgs::msg::Imu &imu_msg, double dt)
+	{
+		if (dt <= 0.0) {
+			dt = 1.0 / 100.0;
+		}
+
+		init_biases_if_needed();
+
+		// 1) bias random walk
+		update_bias_random_walk(bias_ax_, ACC_BIAS_RW, dt);
+		update_bias_random_walk(bias_ay_, ACC_BIAS_RW, dt);
+		update_bias_random_walk(bias_r_,  GYRO_BIAS_RW, dt);
+
+		// 2) ax, ay
+		{
+			const double ax_true = imu_msg.linear_acceleration.x;
+			const double ay_true = imu_msg.linear_acceleration.y;
+
+			const double sigma_ax = ACC_NOISE_BASE + ACC_NOISE_K * std::abs(ax_true);
+			const double sigma_ay = ACC_NOISE_BASE + ACC_NOISE_K * std::abs(ay_true);
+
+			imu_msg.linear_acceleration.x = ax_true + bias_ax_ + gen_noise(sigma_ax);
+			imu_msg.linear_acceleration.y = ay_true + bias_ay_ + gen_noise(sigma_ay);
+		}
+
+		// 3) r (yaw rate)
+		{
+			const double r_true = imu_msg.angular_velocity.z;
+			const double sigma_r = GYRO_NOISE_BASE + GYRO_NOISE_K * std::abs(r_true);
+
+			imu_msg.angular_velocity.z = r_true + bias_r_ + gen_noise(sigma_r);
+		}
 	}
 
 	void pub_imu(
@@ -749,11 +817,19 @@ public:
 
 		imu_msg.angular_velocity.x = 0.0;
 		imu_msg.angular_velocity.y = 0.0;
-		imu_msg.angular_velocity.z = state.r;
+		// imu_msg.angular_velocity.z = state.r;
+		imu_msg.angular_velocity.z = gen_noise(0.1) + state.r;
 
-		imu_msg.linear_acceleration.x = state.ax;
-		imu_msg.linear_acceleration.y = state.ay;
+		// imu_msg.linear_acceleration.x = state.ax;
+		// imu_msg.linear_acceleration.y = state.ay;
+		imu_msg.linear_acceleration.x = gen_noise(1.0) + state.ax;
+		imu_msg.linear_acceleration.y = gen_noise(1.0) + state.ay;
 		imu_msg.linear_acceleration.z = 0.0;
+
+	
+		double dt = 1.0 / imu_frequency_;
+		// imu_noise(imu_msg, dt);
+		
 
 		imu_pub->publish(imu_msg);
 	}

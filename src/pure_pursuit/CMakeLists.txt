@@ -14,6 +14,7 @@ find_package(nav_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 
 add_executable(pure_pursuit src/pure_pursuit.cpp)
+add_executable(sine_sweep src/sine_sweep.cpp)
 
 ament_target_dependencies(pure_pursuit
   rclcpp
@@ -23,8 +24,17 @@ ament_target_dependencies(pure_pursuit
   tf2
 )
 
+ament_target_dependencies(sine_sweep
+  rclcpp
+  ackermann_msgs
+  nav_msgs
+  tf2
+)
+
+
 install(TARGETS
   pure_pursuit
+  sine_sweep
   DESTINATION lib/${PROJECT_NAME}
 )
 

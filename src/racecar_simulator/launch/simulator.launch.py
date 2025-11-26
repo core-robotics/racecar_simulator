@@ -120,17 +120,42 @@ def generate_launch_description():
         executable="pure_pursuit",
         name="pure_pursuit",
         output="screen",
+        #train
         parameters=[
-            {"lookahead": 3.0},
-            {"wheelbase": 0.46},
+            {"lookahead": 1.5},
+            {"wheelbase": 0.33},
             {"speed_min": 0.7},
-            {"speed_max": 5.0},
+            {"speed_max": 4.0},
             {"k_speed": 2.5},
-            {"k_accel": 2.0},
+            {"k_accel": 6.0},
             {"accel_min": -15.0},
             {"accel_max": 15.0},
         ],
+        # # eval
+        # parameters=[
+        #     {"lookahead": 1.0},
+        #     {"wheelbase": 0.33},
+        #     {"speed_min": 0.7},
+        #     {"speed_max": 3.0},
+        #     {"k_speed": 2.0},
+        #     {"k_accel": 5.0},
+        #     {"accel_min": -15.0},
+        #     {"accel_max": 15.0},
+        # ],
     )
+    
+    # pure_pursuit_node = Node(
+    #     package="pure_pursuit",
+    #     executable="sine_sweep",
+    #     name="sine_sweep",
+    #     output="screen",
+    #     parameters=[
+    #         {"amplitude": 0.5},
+    #         {"frequency_start": 0.1},
+    #         {"frequency_end": 2.0},
+    #         {"duration": 60.0},
+    #     ],
+    # )
 
     # racecar_stat_node = Node(
     #     package="racecar_simulator",
