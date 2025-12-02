@@ -498,14 +498,16 @@ public:
 		const double Fn_r = p.mass * 9.81 * (p.l_f / L);
 
 		const double Fx_total = p.mass * 9.81 * p.long_mu_tire * std::sin(p.long_C * std::atan(p.long_B * kappa));
-		const double Fx_f = Fx_total * (p.l_r / L);
-		const double Fx_r = Fx_total * (p.l_f / L);
+		double Fx_f = Fx_total * (p.l_r / L);
+		double Fx_r = Fx_total * (p.l_f / L);
 
 		const double F_drag = p.Cd0 * sign0(start.vx) + p.Cd1 * start.vx + p.Cd2 * start.vx * start.vx;
-		const double Fy_f = -Fn_f * p.D_f * std::sin(p.C_f * std::atan(p.B_f * alpha_f));
-		const double Fy_r = -Fn_r * p.D_r * std::sin(p.C_r * std::atan(p.B_r * alpha_r));
+		double Fy_f = -Fn_f * p.D_f * std::sin(p.C_f * std::atan(p.B_f * alpha_f));
+		double Fy_r = -Fn_r * p.D_r * std::sin(p.C_r * std::atan(p.B_r * alpha_r));
 
 		const double iq = pid_controller_.compute(start.accel_cmd, start.ax, dt);
+
+		Fx_f, Fx_r, Fy_f, Fy_r = (0.4/0.6)*(Fx_f, Fx_r, Fy_f, Fy_r);
 
 		const double x_dot = start.vx * std::cos(start.yaw) - start.vy * std::sin(start.yaw);
 		const double y_dot = start.vx * std::sin(start.yaw) + start.vy * std::cos(start.yaw);

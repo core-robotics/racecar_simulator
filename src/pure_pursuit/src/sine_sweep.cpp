@@ -1,56 +1,109 @@
 #include <rclcpp/rclcpp.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <ackermann_msgs/msg/ackermann_drive_stamped.hpp>
-#include <tf2/LinearMath/Quaternion.h>
-#include <tf2/LinearMath/Matrix3x3.h>
 
-#include <cmath>
 #include <chrono>
 #include <string>
+#include <vector>
 #include <algorithm>
+#include <random>
+#include <cmath>
 
-class CenterLookaheadSineSweepNode : public rclcpp::Node {
+class GridSweepExcitationNode : public rclcpp::Node {
 public:
-  CenterLookaheadSineSweepNode() : Node("center_lookahead_sine_sweep_node") {
+  GridSweepExcitationNode()
+  : Node("grid_sweep_excitation_node"),
+    rng_(std::random_device{}())
+  {
     using std::chrono::milliseconds;
 
-    // === 차량/입력 한계 ===
-    wheelbase_ = declare_parameter<double>("wheelbase", 0.46);   // [m] (지금은 거의 안 씀)
-    a_min_     = declare_parameter<double>("accel_min", -10.0);  // [m/s^2] 최댓 감속 (음수)
-    a_max_     = declare_parameter<double>("accel_max",  10.0);  // [m/s^2] 최댓 가속
-    steer_max_ = declare_parameter<double>("steer_max",  0.4189);// [rad] ≈ 24 deg
+    // Vehicle limits
+    wheelbase_ = declare_parameter<double>("wheelbase", 0.46);
+    a_min_     = declare_parameter<double>("accel_min", -5.0);
+    a_max_     = declare_parameter<double>("accel_max",  5.0);
+    steer_max_ = declare_parameter<double>("steer_max",  0.4189);
 
-    // 원 중심을 바라보게 하는 조향 gain
-    k_steer_center_ = declare_parameter<double>("k_steer_center", 0.01);
+    if (a_min_ >= 0.0) {
+      RCLCPP_WARN(get_logger(), "accel_min must be negative, clamping to -5.0");
+      a_min_ = -5.0;
+    }
+    if (a_max_ <= 0.0) {
+      RCLCPP_WARN(get_logger(), "accel_max must be positive, clamping to 5.0");
+      a_max_ = 5.0;
+    }
+    if (a_min_ >= a_max_) {
+      RCLCPP_WARN(get_logger(), "accel_min >= accel_max, resetting to [-5,5]");
+      a_min_ = -5.0;
+      a_max_ =  5.0;
+    }
 
-    // 최소 속도 유지 파라미터
-    v_min_target_ = declare_parameter<double>("v_min_target", 1.0);   // [m/s] 유지하고 싶은 최소 속도
-    k_v_min_      = declare_parameter<double>("k_v_min",     2.0);    // (v_min - v)용 P 게인
+    // v_ref, w_ref ranges  (v: 0.5~10, w: -5~+5)
+    v_min_ref_ = declare_parameter<double>("v_min_ref", 0.5);
+    v_max_ref_ = declare_parameter<double>("v_max_ref", 10.0);
+    w_max_ref_ = declare_parameter<double>("w_max_ref", 5.0);
 
-    // === 안전 원 파라미터 ===
-    R_safe_   = declare_parameter<double>("safe_radius", 500.0);    // [m]
-    margin_   = declare_parameter<double>("safe_margin",  50.0);    // [m] 경계 안쪽 guard band
-    center_x_ = declare_parameter<double>("circle_center_x", 0.0);
-    center_y_ = declare_parameter<double>("circle_center_y", 0.0);
+    if (v_min_ref_ > v_max_ref_) {
+      RCLCPP_WARN(get_logger(), "v_min_ref > v_max_ref, swapping");
+      std::swap(v_min_ref_, v_max_ref_);
+    }
+    if (w_max_ref_ <= 0.0) {
+      RCLCPP_WARN(get_logger(), "w_max_ref must be positive, clamping to 1.0");
+      w_max_ref_ = 1.0;
+    }
 
-    // === Sine Sweep 파라미터 (종방향만 사용) ===
-    A_long_max_   = declare_parameter<double>("long_sweep_amplitude", 5.0);   // [m/s^2]
-    f_long_start_ = declare_parameter<double>("long_f_start", 0.001);           // [Hz]
-    f_long_end_   = declare_parameter<double>("long_f_end",   0.5);           // [Hz]
-    sweep_duration_ = declare_parameter<double>("sweep_duration", 60.0);      // [s]
+    // Grid config
+    n_v_            = declare_parameter<int>("n_v", 7);
+    n_w_            = declare_parameter<int>("n_w", 7);
+    dwell_time_sec_ = declare_parameter<double>("dwell_time", 10.0);
+    shuffle_grid_   = declare_parameter<bool>("shuffle_grid", true);
 
+    // v_ref sine sweep (global max amplitude/freq)
+    A_v_max_   = declare_parameter<double>("v_sweep_amplitude", 5.0);  // 크게
+    f_v_start_ = declare_parameter<double>("v_f_start", 0.05);
+    f_v_end_   = declare_parameter<double>("v_f_end",   1.0);
+
+    // w_ref sine sweep (global max amplitude/freq)
+    A_w_max_   = declare_parameter<double>("w_sweep_amplitude", 5.0);  // 크게
+    f_w_start_ = declare_parameter<double>("w_f_start", 0.05);
+    f_w_end_   = declare_parameter<double>("w_f_end",   1.0);
+
+    // Tracking gains
+    k_v_ = declare_parameter<double>("k_v", 1.0);
+    k_w_ = declare_parameter<double>("k_w", 0.5);
+
+    // Amplitude sanity check
+    const double v_range = v_max_ref_ - v_min_ref_;
+    if (A_v_max_ <= 0.0) {
+      RCLCPP_WARN(get_logger(),
+                  "v_sweep_amplitude <= 0, setting to half of v-range");
+      A_v_max_ = 0.5 * v_range;
+    }
+    if (A_v_max_ > v_range) {
+      RCLCPP_WARN(get_logger(),
+                  "v_sweep_amplitude > v-range, clamping to v-range");
+      A_v_max_ = v_range;
+    }
+    if (A_w_max_ <= 0.0) {
+      RCLCPP_WARN(get_logger(),
+                  "w_sweep_amplitude <= 0, setting to w_max_ref");
+      A_w_max_ = w_max_ref_;
+    }
+    if (A_w_max_ > w_max_ref_) {
+      RCLCPP_WARN(get_logger(),
+                  "w_sweep_amplitude > w_max_ref, clamping");
+      A_w_max_ = w_max_ref_;
+    }
+
+    // Topics
     odom_topic_  = declare_parameter<std::string>("odom_topic",  "odom0");
     drive_topic_ = declare_parameter<std::string>("drive_topic", "ackermann_cmd0");
 
-    if (a_min_ >= 0.0) {
-      RCLCPP_WARN(get_logger(),
-                  "accel_min (a_min_) is not negative. For safety, set to -5.0 m/s^2");
-      a_min_ = -5.0;
-    }
+    buildGridPattern();
 
-    start_time_ = now();
+    last_switch_time_ = std::chrono::steady_clock::now();
+    current_index_    = 0;
 
-    // QoS
+    // ROS interfaces
     auto pub_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable();
     auto sub_qos = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort();
 
@@ -59,141 +112,176 @@ public:
 
     sub_odom_ = create_subscription<nav_msgs::msg::Odometry>(
         odom_topic_, sub_qos,
-        [this](nav_msgs::msg::Odometry::SharedPtr msg){
+        [this](nav_msgs::msg::Odometry::SharedPtr msg) {
           odom_ = *msg;
           has_odom_ = true;
         });
 
-    timer_ = create_wall_timer(milliseconds(10),
-                               std::bind(&CenterLookaheadSineSweepNode::onTimer, this));
+    timer_ = create_wall_timer(
+        milliseconds(10),
+        std::bind(&GridSweepExcitationNode::onTimerTick, this));
   }
 
 private:
-  void onTimer() {
-    if (!has_odom_) return;
+  struct GridCellCommand {
+    double v_bias;
+    double w_bias;
+    double v_amp;   // 이 셀에서 사용할 v amplitude
+    double w_amp;   // 이 셀에서 사용할 w amplitude
+  };
 
-    // === 현재 pose & yaw ===
-    const auto &p = odom_.pose.pose.position;
-    const auto &q = odom_.pose.pose.orientation;
+  template <typename T>
+  static T clamp(T value, T lo, T hi) {
+    return std::max(lo, std::min(hi, value));
+  }
 
-    double roll, pitch, yaw;
-    tf2::Quaternion tq(q.x, q.y, q.z, q.w);
-    tf2::Matrix3x3(tq).getRPY(roll, pitch, yaw);
+  static double computeSweepFrequency(double f_start, double f_end,
+                                      double T, double t_now) {
+    if (T <= 0.0)   return f_start;
+    if (t_now >= T) return f_end;
+    const double s = t_now / T;
+    return f_start + (f_end - f_start) * s;
+  }
 
-    const double x = p.x;
-    const double y = p.y;
-    const double v = odom_.twist.twist.linear.x;
+  void buildGridPattern() {
+    inputs_.clear();
 
-    // === 원 좌표계 ===
-    const double dx_c = x - center_x_;
-    const double dy_c = y - center_y_;
-    const double r    = std::hypot(dx_c, dy_c);
-    const double d    = R_safe_ - r;        // 경계까지 거리 (양수면 안쪽, 0이면 경계)
+    n_v_ = std::max(n_v_, 1);
+    n_w_ = std::max(n_w_, 1);
 
-    // === 바깥 방향 속도 성분 v_r ===
-    double v_r = 0.0;  // >0 이면 원 밖 방향으로 진행 중
-    if (r > 1e-3) {
-      const double ex = dx_c / r;      // radial unit outward x
-      const double ey = dy_c / r;      // radial unit outward y
-      const double vx = v * std::cos(yaw);
-      const double vy = v * std::sin(yaw);
-      v_r = vx * ex + vy * ey;
+    const double v_min = v_min_ref_;
+    const double v_max = v_max_ref_;
+    const double w_min = -w_max_ref_;
+    const double w_max =  w_max_ref_;
+
+    const double d_v = (n_v_ > 1) ? (v_max - v_min) / (n_v_ - 1) : 0.0;
+    const double d_w = (n_w_ > 1) ? (w_max - w_min) / (n_w_ - 1) : 0.0;
+
+    for (int i = 0; i < n_v_; ++i) {
+      const double v_bias = v_min + d_v * i;
+      for (int j = 0; j < n_w_; ++j) {
+        const double w_bias = w_min + d_w * j;
+
+        // 이 셀에서 v,w가 범위를 넘지 않으면서 최대한 크게 흔들리도록 amplitude 설정
+        const double v_margin_low  = v_bias - v_min;
+        const double v_margin_high = v_max - v_bias;
+        const double v_amp_cell    = std::min({A_v_max_, v_margin_low, v_margin_high});
+
+        const double w_margin_low  = w_bias - w_min; // = w_bias + w_max_ref_
+        const double w_margin_high = w_max - w_bias;
+        const double w_amp_cell    = std::min({A_w_max_, w_margin_low, w_margin_high});
+
+        inputs_.push_back({v_bias, w_bias, v_amp_cell, w_amp_cell});
+      }
     }
 
-    // === 1. 조향: 항상 원 중심을 lookahead point 로 보는 형태 ===
-    double angle_to_center = std::atan2(center_y_ - y, center_x_ - x);
-    double yaw_err = normalizeAngle(angle_to_center - yaw);
-    double steer_cmd = k_steer_center_ * yaw_err;
-    steer_cmd = std::max(-steer_max_, std::min(steer_max_, steer_cmd));
+    if (shuffle_grid_ && inputs_.size() > 1) {
+      std::shuffle(inputs_.begin(), inputs_.end(), rng_);
+    }
 
-    // === 2. 종방향 Sine Sweep + 속도 바닥 제어 ===
-    const double t = (now() - start_time_).seconds();
+    const std::size_t total_cells = inputs_.size();
+    total_cycle_time_sec_ = dwell_time_sec_ * static_cast<double>(total_cells);
 
-    auto chirp = [](double f_start, double f_end, double T, double t_now){
-      if (T <= 0.0) return f_start;
-      if (t_now >= T) return f_end;
-      double s = t_now / T;  // 0~1
-      return f_start + (f_end - f_start) * s;
-    };
+    RCLCPP_INFO(get_logger(),
+                "Grid: v in [%.2f, %.2f], w in [-%.2f, %.2f], "
+                "n_v=%d, n_w=%d, cells=%zu, cycle=%.1f s (%.1f min)",
+                v_min_ref_, v_max_ref_,
+                w_max_ref_, w_max_ref_,
+                n_v_, n_w_, total_cells,
+                total_cycle_time_sec_, total_cycle_time_sec_ / 60.0);
+  }
 
-    const double f_long = chirp(f_long_start_, f_long_end_, sweep_duration_, t);
+  void onTimerTick() {
+    if (!has_odom_ || inputs_.empty()) {
+      return;
+    }
+
+    const auto now_steady = std::chrono::steady_clock::now();
+    const double t_cell =
+        std::chrono::duration<double>(now_steady - last_switch_time_).count();
+
+    // 셀 변경 시: 인덱스 갱신 + 현재 셀 목표 v,w 및 진행 상황 출력
+    if (t_cell >= dwell_time_sec_) {
+      current_index_ = (current_index_ + 1) % inputs_.size();
+      last_switch_time_ = now_steady;
+
+      if (total_cycle_time_sec_ > 0.0) {
+        const double time_in_cycle =
+            dwell_time_sec_ * static_cast<double>(current_index_);
+        const double time_remaining =
+            std::max(0.0, total_cycle_time_sec_ - time_in_cycle);
+        const double progress_ratio = time_in_cycle / total_cycle_time_sec_;
+
+        const GridCellCommand &cur_cell = inputs_[current_index_];
+
+        RCLCPP_INFO(
+            get_logger(),
+            "Switch to cell %zu/%zu: v_target=%.2f m/s, w_target=%.2f rad/s, "
+            "cycle=%.1f%%, remaining=%.1f s",
+            current_index_ + 1,
+            inputs_.size(),
+            cur_cell.v_bias,
+            cur_cell.w_bias,
+            progress_ratio * 100.0,
+            time_remaining);
+      }
+
+      return;
+    }
+
+    const GridCellCommand &cur = inputs_[current_index_];
     constexpr double PI = 3.14159265358979323846;
 
-    // 순수 sine sweep
-    double a_sweep = A_long_max_ * std::sin(2.0 * PI * f_long * t);
+    // v_ref(t) = v_bias + sine sweep (per-cell amplitude)
+    const double f_v    = computeSweepFrequency(
+        f_v_start_, f_v_end_, dwell_time_sec_, t_cell);
+    const double v_sine = cur.v_amp * std::sin(2.0 * PI * f_v * t_cell);
+    double v_ref        = cur.v_bias + v_sine;
+    v_ref = clamp(v_ref, v_min_ref_, v_max_ref_);  // 안전용
 
-    // 최소 속도 유지: 원 내부 깊은 영역에서만 적용
-    double a_floor = 0.0;
-    if (d > margin_) {
-      if (v < v_min_target_) {
-        a_floor = k_v_min_ * (v_min_target_ - v);
-      }
+    // w_ref(t) = w_bias + sine sweep (per-cell amplitude)
+    const double f_w    = computeSweepFrequency(
+        f_w_start_, f_w_end_, dwell_time_sec_, t_cell);
+    const double w_sine = cur.w_amp * std::sin(2.0 * PI * f_w * t_cell);
+    double w_ref        = cur.w_bias + w_sine;
+    w_ref = clamp(w_ref, -w_max_ref_, w_max_ref_);
+
+    // Measured v, w
+    const auto &tw_lin  = odom_.twist.twist.linear;
+    const auto &tw_ang  = odom_.twist.twist.angular;
+    const double v_meas = tw_lin.x;
+    const double w_meas = tw_ang.z;
+
+    // Longitudinal control
+    double a_cmd = k_v_ * (v_ref - v_meas);
+
+    // Yaw-rate control (FF + FB)
+    constexpr double v_eps = 0.1;
+    double v_for_curv = (std::fabs(v_meas) > v_eps) ? v_meas : v_ref;
+    if (std::fabs(v_for_curv) < v_eps) {
+      v_for_curv = (v_ref >= 0.0) ? v_eps : -v_eps;
     }
 
-    double a_cmd = a_sweep + a_floor;
+    double delta_ff  = std::atan(wheelbase_ * w_ref / v_for_curv);
+    double delta_fb  = k_w_ * (w_ref - w_meas);
+    double steer_cmd = delta_ff + delta_fb;
 
-    // 기본 한계 clip
-    a_cmd = std::max(a_min_, std::min(a_max_, a_cmd));
+    steer_cmd = clamp(steer_cmd, -steer_max_, steer_max_);
+    a_cmd     = clamp(a_cmd,     a_min_,      a_max_);
 
-    // === 3. 안전 제어 (원 밖으로 안 나가게 override) ===
-    const double a_brake = std::abs(a_min_); // 사용할 수 있는 최대 감속 [>0]
+    publishDriveCommand(steer_cmd, a_cmd);
+  }
 
-    // (A) 이미 원 밖인 경우: 풀 브레이크 + 중심 조향 (steer는 이미 center를 향함)
-    if (d <= 0.0) {
-      a_cmd = a_min_; // 최대 감속
-
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 500,
-          "Outside safe circle! r=%.3f > R_safe=%.3f. Emergency brake.",
-          r, R_safe_);
-    }
-    // (B) guard band 안쪽 (R_safe - margin ~ R_safe):
-    // 바깥 방향 속도 v_r와 d 로 stopping distance 체크
-    else if (d <= margin_) {
-      if (v_r > 0.0) {
-        double s_stop = (v_r * v_r) / (2.0 * a_brake); // 바깥 방향 제동거리
-
-        if (s_stop >= d) {
-          // 지금 속도로 가면 경계를 넘으니, sine sweep 무시하고 풀 브레이크
-          a_cmd = a_min_;
-        } else {
-          // 아직 여유는 있지만, 경계에 가까워질수록 진폭 줄이기
-          double scale = d / margin_;  // 1 -> 0
-          a_cmd *= scale;
-        }
-      } else {
-        // v_r <= 0: 안쪽/접선 방향 → r 증가 위험 적음, 그래도 살짝 줄이기
-        double scale = d / margin_;
-        a_cmd *= scale;
-      }
-    }
-    // (C) 내부 영역 (r <= R_safe - margin): a_cmd = sweep + floor 그대로, safety override 없음
-
-    // 최종 saturation
-    if (a_cmd > a_max_) a_cmd = a_max_;
-    if (a_cmd < a_min_) a_cmd = a_min_;
-    if (steer_cmd >  steer_max_) steer_cmd =  steer_max_;
-    if (steer_cmd < -steer_max_) steer_cmd = -steer_max_;
-
-    // === Publish ===
+  void publishDriveCommand(double steering_angle, double acceleration) {
     ackermann_msgs::msg::AckermannDriveStamped cmd;
     cmd.header.stamp = now();
     cmd.header.frame_id = "base_link";
-    cmd.drive.steering_angle = steer_cmd;
-    cmd.drive.acceleration   = a_cmd;
-    // cmd.drive.speed 는 여기서 사용 X
-
+    cmd.drive.steering_angle = steering_angle;
+    cmd.drive.acceleration   = acceleration;
     drive_pub_->publish(cmd);
   }
 
-  static double normalizeAngle(double a) {
-    constexpr double PI = 3.14159265358979323846;
-    while (a >  PI) a -= 2.0 * PI;
-    while (a < -PI) a += 2.0 * PI;
-    return a;
-  }
-
-  // Members
+  // ROS
   rclcpp::Publisher<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive_pub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odom_;
   rclcpp::TimerBase::SharedPtr timer_;
@@ -201,29 +289,40 @@ private:
   nav_msgs::msg::Odometry odom_;
   bool has_odom_{false};
 
-  // 파라미터들
-  double wheelbase_;
-  double a_min_, a_max_;
-  double steer_max_;
-  double k_steer_center_;
-  double R_safe_, margin_;
-  double center_x_, center_y_;
+  // Limits / ranges
+  double wheelbase_{0.0};
+  double a_min_{0.0}, a_max_{0.0};
+  double steer_max_{0.0};
+  double v_min_ref_{0.0}, v_max_ref_{0.0};
+  double w_max_ref_{0.0};
 
-  // 최소 속도 유지
-  double v_min_target_;
-  double k_v_min_;
+  // Grid
+  int n_v_{0};
+  int n_w_{0};
+  double dwell_time_sec_{0.0};
+  bool shuffle_grid_{false};
+  std::vector<GridCellCommand> inputs_;
+  std::size_t current_index_{0};
+  double total_cycle_time_sec_{0.0};
 
-  // 종방향 sine sweep
-  double A_long_max_, f_long_start_, f_long_end_;
-  double sweep_duration_;
+  // Sine sweep (global max)
+  double A_v_max_{0.0}, f_v_start_{0.0}, f_v_end_{0.0};
+  double A_w_max_{0.0}, f_w_start_{0.0}, f_w_end_{0.0};
 
-  std::string odom_topic_, drive_topic_;
-  rclcpp::Time start_time_;
+  // Gains
+  double k_v_{0.0};
+  double k_w_{0.0};
+
+  // Misc
+  std::string odom_topic_;
+  std::string drive_topic_;
+  std::chrono::steady_clock::time_point last_switch_time_;
+  std::mt19937 rng_;
 };
 
-int main(int argc, char **argv){
+int main(int argc, char **argv) {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<CenterLookaheadSineSweepNode>());
+  rclcpp::spin(std::make_shared<GridSweepExcitationNode>());
   rclcpp::shutdown();
   return 0;
 }

@@ -115,22 +115,22 @@ def generate_launch_description():
         # parameters=[{"use_sim_time": True}],
     )
     
-    pure_pursuit_node = Node(
-        package="pure_pursuit",
-        executable="pure_pursuit",
-        name="pure_pursuit",
-        output="screen",
-        #train
-        parameters=[
-            {"lookahead": 1.5},
-            {"wheelbase": 0.33},
-            {"speed_min": 0.7},
-            {"speed_max": 4.0},
-            {"k_speed": 2.5},
-            {"k_accel": 6.0},
-            {"accel_min": -15.0},
-            {"accel_max": 15.0},
-        ],
+    # pure_pursuit_node = Node(
+    #     package="pure_pursuit",
+    #     executable="pure_pursuit",
+    #     name="pure_pursuit",
+    #     output="screen",
+    #     #train
+    #     parameters=[
+    #         {"lookahead": 1.5},
+    #         {"wheelbase": 0.33},
+    #         {"speed_min": 0.7},
+    #         {"speed_max": 4.0},
+    #         {"k_speed": 2.5},
+    #         {"k_accel": 6.0},
+    #         {"accel_min": -15.0},
+    #         {"accel_max": 15.0},
+    #     ],
         # # eval
         # parameters=[
         #     {"lookahead": 1.0},
@@ -142,7 +142,7 @@ def generate_launch_description():
         #     {"accel_min": -15.0},
         #     {"accel_max": 15.0},
         # ],
-    )
+    # )
     
     # pure_pursuit_node = Node(
     #     package="pure_pursuit",
@@ -171,7 +171,7 @@ def generate_launch_description():
     ld.add_action(racecar_node)
     ld.add_action(map_publisher_node)
     ld.add_action(robot0_state_publisher_node)
-    ld.add_action(pure_pursuit_node)
+    # ld.add_action(pure_pursuit_node)
     # ld.add_action(racecar_stat_node)
     # ld.add_action(robot1_state_publisher_node)
 
