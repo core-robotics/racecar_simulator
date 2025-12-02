@@ -387,7 +387,7 @@ private:
       line.lifetime        = rclcpp::Duration(0, 0);
 
       geometry_msgs::msg::Point pA, pB;
-      const double half_len = 1.0;
+      const double half_len = 1.6;
       pA.x = p0x_ - half_len * tx_;
       pA.y = p0y_ - half_len * ty_;
       pA.z = 0.05;
