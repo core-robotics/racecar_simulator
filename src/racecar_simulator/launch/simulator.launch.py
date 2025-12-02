@@ -12,7 +12,7 @@ def generate_launch_description():
     pkg_dir = '/home/a/racecar_simulator/src/racecar_simulator/'
 
 
-    map_name = "icra2025"
+    map_name = "berlin"
 
     # 1. Austin
     # 2. Melbourne
@@ -42,8 +42,8 @@ def generate_launch_description():
     simulation_config_file = os.path.join(pkg_dir, "params", "simulation.yaml")
     race_stat_config_file = os.path.join(pkg_dir, "params", "race_stats.yaml")
     map_folder = os.path.join(pkg_dir, "maps/f1tenth_racetracks")
-    # map_img = os.path.join(map_folder, map_name, map_name + "_map.png")
-    map_img = os.path.join(map_folder, map_name, map_name + "_map.pgm")
+    map_img = os.path.join(map_folder, map_name, map_name + "_map.png")
+    # map_img = os.path.join(map_folder, map_name, map_name + "_map.pgm")
     map_yaml = os.path.join(map_folder, map_name, map_name + "_map.yaml")
     map_center = os.path.join(map_folder, map_name, map_name + "_centerline.csv")
 

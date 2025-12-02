@@ -28,10 +28,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # ====== Paths (edit here) ======
-CENTER_PATH = Path("/home/a/racecar_simulator/src/racecar_simulator/maps/lane_process/icra2025/icra2025_centerline.csv")
-LEFT_PATH   = Path("/home/a/racecar_simulator/src/racecar_simulator/maps/lane_process/icra2025/icra2025_left.csv")
-RIGHT_PATH  = Path("/home/a/racecar_simulator/src/racecar_simulator/maps/lane_process/icra2025/icra2025_right.csv")
-OUT_CSV     = Path("/home/a/racecar_simulator/src/racecar_simulator/maps/lane_process/icra2025/icra2025_centerline_c.csv")
+CENTER_PATH = Path("/home/a/racecar_simulator/src/racecar_simulator/maps/lane_process/berlin/berlin_path.csv")
+LEFT_PATH   = Path("/home/a/racecar_simulator/src/racecar_simulator/maps/lane_process/berlin/berlin_left.csv")
+RIGHT_PATH  = Path("/home/a/racecar_simulator/src/racecar_simulator/maps/lane_process/berlin/berlin_right.csv")
+OUT_CSV     = Path("/home/a/racecar_simulator/src/racecar_simulator/maps/lane_process/berlin/berlin_centerline_c.csv")
 # =================================
 
 # ---------------- I/O helpers ----------------
@@ -246,8 +246,8 @@ def main():
     out, C_s, L_s, R_s, wL_raw, wR_raw, wL_s, wR_s = compute_smooth_boundaries(
         center_df, left_df, right_df,
         center_smooth_win=3,     # increase for noisier centerlines
-        width_med_win=3,        # robust outlier removal
-        width_mean_win=3       # strong low-pass smoothing
+        width_med_win=7,        # robust outlier removal
+        width_mean_win=7       # strong low-pass smoothing
     )
 
     # Save

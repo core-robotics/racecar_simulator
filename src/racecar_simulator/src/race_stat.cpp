@@ -228,6 +228,9 @@ private:
     }
 
     bool crossed = false;
+
+    // std::cout<< "Prev idx: " << prev_idx_ << " Curr idx: " << idx << std::endl;
+
     if (path_size_ >= 6)
     {
       int last_zone_start = path_size_ - 2;
