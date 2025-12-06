@@ -1,0 +1,10 @@
+nn_aukf:
+  ros__parameters:
+    model_path: "/home/a/racecar_simulator/src/nn_odom/models/500_loss_0.020788_scripted.pt"
+
+    use_gpu: true
+    timer_period: 100.0
+    odom_topic: "/odom"
+    imu_topic: "/imu/data"
+    control_topic: "/ackermann_cmd"
+    motor_current_topic: "/sensors/core"
