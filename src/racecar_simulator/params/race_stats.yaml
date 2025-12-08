@@ -9,9 +9,9 @@ race_stat:
     # Frames / HUD
     text_frame: "map"
     fixed_frame: "map"
-    text_anchor_x: 5.0
-    text_anchor_y: -32.0
-    text_scale: 1.0
+    text_anchor_x: -8.0
+    text_anchor_y: 10.0
+    text_scale: 0.5
 
     # Lap timing behavior
     start_on_first_cross: true

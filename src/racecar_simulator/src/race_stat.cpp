@@ -164,7 +164,7 @@ private:
     ty_  =  n0x_;
 
     have_path_      = true;
-    line_published_ = false;
+    line_published_ = true;
     
   }
 
