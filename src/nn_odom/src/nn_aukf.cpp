@@ -29,7 +29,7 @@ public:
     use_gpu_        = declare_parameter<bool>("use_gpu", true);
     mu_init_        = declare_parameter<double>("mu_init", 1.0);
 
-    double hz = declare_parameter<double>("timer_period", 10.0);
+    double hz = declare_parameter<double>("timer_period", 100.0);
     double period_sec = 1.0 / hz;
 
     odom_topic_          = declare_parameter<std::string>("odom_topic", "/odom");
@@ -200,6 +200,7 @@ private:
     msg.header.stamp = now();
     msg.header.frame_id = "base_link";
 
+    // NOTE: 기존 코드 유지
     msg.twist.twist.linear.x  = vx;
     msg.twist.twist.linear.y  = vy;
     msg.twist.twist.angular.z = r;
@@ -230,6 +231,9 @@ private:
 
     torch::NoGradGuard no_grad;
 
+    // ---------------------------
+    // Warmup: basic UKF 30 steps
+    // ---------------------------
     if (step_count_ < 30)
     {
       std::vector<torch::jit::IValue> inputs;
@@ -252,10 +256,22 @@ private:
 
       step_count_++;
 
+      // ✅ 웜업 종료 메시지: 30회 완료 직후 1회 출력
+      if (step_count_ == 30)
+      {
+        RCLCPP_INFO(
+          this->get_logger(),
+          "Basic UKF warmup completed (30 steps). Switching to NN-UKF."
+        );
+      }
+
       publish_odom_nn();
       return;
     }
 
+    // ---------------------------
+    // NN-UKF
+    // ---------------------------
     torch::Tensor innov_hist = build_innov_hist();
 
     std::vector<torch::jit::IValue> inputs;
@@ -267,7 +283,17 @@ private:
     inputs.push_back(innov_hist);
     inputs.push_back(R_diag_prev_);
 
+    // ✅ NN-UKF 추론 시간 매번 출력
+    auto t0 = std::chrono::steady_clock::now();
     auto out = nn_module_.forward(inputs).toTuple();
+    auto t1 = std::chrono::steady_clock::now();
+
+    auto us = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+    RCLCPP_INFO(
+      this->get_logger(),
+      "NN-UKF inference time: %ld us (%.3f ms)",
+      (long)us, us / 1000.0
+    );
 
     torch::Tensor x_hat  = out->elements()[0].toTensor();
     torch::Tensor P_hat  = out->elements()[1].toTensor();
