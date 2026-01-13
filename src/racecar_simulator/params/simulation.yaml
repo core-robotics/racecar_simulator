@@ -25,33 +25,37 @@ racecar_simulator:
     scan_frame0: "laser_model0"
 
     # Vehicle parameters (car0) — from C++ defaults
-    mass0: 5.1                          # kg
+    mass0: 3.7                          # kg
     l_r0: 0.1560                         # m  CoM -> rear axle
     l_f0: 0.1740                         # m  CoM -> front axle
     I_z0: 0.3293                          # kg*m^2 yaw inertia
 
-    # Tire/friction model (C++ names)
-    B_f0: 2.8258
-    C_f0: 0.8576
-    D_f0: 1.1255
-    B_r0: 8.2936
-    C_r0: 1.1897
-    D_r0: 0.9068
-    long_B0: 2.3348
-    long_C0: 1.3535
-    long_mu_tire0: 0.6544
+    # Tire/friction model
+    B_xf0: 1.5
+    C_xf0: 1.5
+    D_xf0: 10.0
+    B_xr0: 1.5
+    C_xr0: 1.5
+    D_xr0: 10.0
+
+    B_yf0: 1.5
+    C_yf0: 1.5
+    D_yf0: 30.0
+    B_yr0: 1.5
+    C_yr0: 1.5
+    D_yr0: 30.0
 
     # Drivetrain & motor (car0)
     wheel_radius0: 0.05                 # m
-    motor_torque_constant0: 0.3910     # N*m/A
-    power_train_inertia0: 0.1117        # kg*m^2 
-    coulomb_friction0: 2.1570           # N*m (b1)
-    viscous_friction0: 0.4323           # N*m*s/rad (b0)
+    motor_torque_constant0: 0.4     # N*m/A
+    power_train_inertia0: 0.1        # kg*m^2 
+    coulomb_friction0: 2.0           # N*m (b1)
+    viscous_friction0: 0.4           # N*m*s/rad (b0)
 
     # Aerodynamic drag
-    Cd0_0: 0.0033                          # N
+    Cd0_0: 0.003                          # N
     Cd1_0: 0.0005                         # N/(m/s)
-    Cd2_0: 0.0019                          # N/(m/s)^2
+    Cd2_0: 0.002                          # N/(m/s)^2
 
     # PID controller parameters (car0)
     motor_p: 15.0

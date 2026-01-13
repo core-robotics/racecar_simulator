@@ -87,8 +87,8 @@ private:
 	struct CarParams
 	{
 		double mass, l_r, l_f, I_z;
-		double B_f, C_f, D_f, B_r, C_r, D_r;
-		double long_B, long_C, long_mu_tire;
+		double B_xf, C_xf, D_xf, B_xr, C_xr, D_xr;
+		double B_yf, C_yf, D_yf, B_yr, C_yr, D_yr;
 		double wheel_radius;
 		double power_train_inertia, motor_torque_constant;
 		double coulomb_friction, viscous_friction;
@@ -99,6 +99,7 @@ private:
 	double motor_p_, motor_i_, motor_d_;
 	double motor_prev_e_, motor_integral_;
 	int vehicle_model0_;
+
 	std::string drive_topic0_, collision_topic0_, state_topic0_, scan_topic0_, odom_topic0_, imu_topic0_, pose_topic0_;
 	std::string base_frame0_, scan_frame0_;
 	std::string pgm_file_path_, yaml_file_path_;
@@ -195,15 +196,18 @@ public:
 		this->declare_parameter("l_r0", 0.115);
 		this->declare_parameter("l_f0", 0.345);
 		this->declare_parameter("I_z0", 0.46);
-		this->declare_parameter("B_f0", 5.9);
-		this->declare_parameter("C_f0", 2.2);
-		this->declare_parameter("D_f0", 0.8);
-		this->declare_parameter("B_r0", 5.9);
-		this->declare_parameter("C_r0", 2.2);
-		this->declare_parameter("D_r0", 0.8);
-		this->declare_parameter("long_B0", 2.8);
-		this->declare_parameter("long_C0", 1.2);
-		this->declare_parameter("long_mu_tire0", 0.9);
+		this->declare_parameter("B_xf0", 1.5);
+		this->declare_parameter("C_xf0", 1.5);
+		this->declare_parameter("D_xf0", 15.0);
+		this->declare_parameter("B_xr0", 1.5);
+		this->declare_parameter("C_xr0", 1.5);
+		this->declare_parameter("D_xr0", 15.0);
+		this->declare_parameter("B_yf0", 1.5);
+		this->declare_parameter("C_yf0", 1.5);
+		this->declare_parameter("D_yf0", 30.0);
+		this->declare_parameter("B_yr0", 1.5);
+		this->declare_parameter("C_yr0", 1.5);
+		this->declare_parameter("D_yr0", 30.0);
 		this->declare_parameter("wheel_radius0", 0.05);
 		this->declare_parameter("motor_torque_constant0", 0.00273);
 		this->declare_parameter("power_train_inertia0", 7.0e-5);
@@ -229,15 +233,18 @@ public:
 		this->get_parameter("l_r0", car0_params_.l_r);
 		this->get_parameter("l_f0", car0_params_.l_f);
 		this->get_parameter("I_z0", car0_params_.I_z);
-		this->get_parameter("B_f0", car0_params_.B_f);
-		this->get_parameter("C_f0", car0_params_.C_f);
-		this->get_parameter("D_f0", car0_params_.D_f);
-		this->get_parameter("B_r0", car0_params_.B_r);
-		this->get_parameter("C_r0", car0_params_.C_r);
-		this->get_parameter("D_r0", car0_params_.D_r);
-		this->get_parameter("long_B0", car0_params_.long_B);
-		this->get_parameter("long_C0", car0_params_.long_C);
-		this->get_parameter("long_mu_tire0", car0_params_.long_mu_tire);
+		this->get_parameter("B_xf0", car0_params_.B_xf);
+		this->get_parameter("C_xf0", car0_params_.C_xf);
+		this->get_parameter("D_xf0", car0_params_.D_xf);
+		this->get_parameter("B_xr0", car0_params_.B_xr);
+		this->get_parameter("C_xr0", car0_params_.C_xr);
+		this->get_parameter("D_xr0", car0_params_.D_xr);
+		this->get_parameter("B_yf0", car0_params_.B_yf);
+		this->get_parameter("C_yf0", car0_params_.C_yf);
+		this->get_parameter("D_yf0", car0_params_.D_yf);
+		this->get_parameter("B_yr0", car0_params_.B_yr);
+		this->get_parameter("C_yr0", car0_params_.C_yr);
+		this->get_parameter("D_yr0", car0_params_.D_yr);
 		this->get_parameter("wheel_radius0", car0_params_.wheel_radius);
 		this->get_parameter("power_train_inertia0", car0_params_.power_train_inertia);
 		this->get_parameter("motor_torque_constant0", car0_params_.motor_torque_constant);
@@ -457,9 +464,11 @@ public:
 		const double dt = 1.0 / simulator_frequency_;
 		// integrate input
 		const double vx = start.vx + start.accel_cmd * dt;
-		const double x_dot = vx * std::cos(start.yaw);
-		const double y_dot = vx * std::sin(start.yaw);
-		const double yaw_dot = vx / L * std::tan(start.steer);
+		const double vx_mid = start.vx + 0.5 * start.accel_cmd * dt;
+
+		const double x_dot = vx_mid * std::cos(start.yaw);
+		const double y_dot = vx_mid * std::sin(start.yaw);
+		const double yaw_dot = vx_mid / L * std::tan(start.steer);
 
 		// update state
 		end.px = start.px + x_dot * dt;
@@ -479,35 +488,38 @@ public:
 		car_state0_.accel_cmd = clamp(msg->drive.acceleration, -20.0, 20.0);
 	}
 	// Update car state using Pacejka tire model
-	sim_msgs::msg::CarState updateStatePacejka(sim_msgs::msg::CarState &start, CarParams &p)
+	sim_msgs::msg::CarState updateStatePacejka(const sim_msgs::msg::CarState& start, const CarParams& p)
 	{
 		sim_msgs::msg::CarState end = start;
 		const double dt = 1.0 / simulator_frequency_;
 
-		if (std::abs(start.vx) < 0.01)
+		if (start.vx < 0.01)
 		{
 			return update_k(start, p);
 		}
 
-		const double L = p.l_f + p.l_r;
-		const double vx_abs = std::abs(start.vx);
-		const double kappa = (start.vw - start.vx) / vx_abs;
-		const double alpha_f = std::atan2(start.vy + p.l_f * start.r, vx_abs) - start.steer;
-		const double alpha_r = std::atan2(start.vy - p.l_r * start.r, vx_abs);
-		const double Fn_f = p.mass * 9.81 * (p.l_r / L);
-		const double Fn_r = p.mass * 9.81 * (p.l_f / L);
+		const double kappa = (start.vw - start.vx) / start.vx;
+		const double alpha_f = std::atan2(start.vy + p.l_f * start.r, start.vx) - start.steer;
+		const double alpha_r = std::atan2(start.vy - p.l_r * start.r, start.vx);
 
-		const double Fx_total = p.mass * 9.81 * p.long_mu_tire * std::sin(p.long_C * std::atan(p.long_B * kappa));
-		double Fx_f = Fx_total * (p.l_r / L);
-		double Fx_r = Fx_total * (p.l_f / L);
+		double Fx_f = p.D_xf * std::sin(p.C_xf * std::atan(p.B_xf * kappa));
+		double Fx_r = p.D_xr * std::sin(p.C_xr * std::atan(p.B_xr * kappa));
+		double Fy_f = -p.D_yf * std::sin(p.C_yf * std::atan(p.B_yf * alpha_f));
+		double Fy_r = -p.D_yr * std::sin(p.C_yr * std::atan(p.B_yr * alpha_r));
 
 		const double F_drag = p.Cd0 * sign0(start.vx) + p.Cd1 * start.vx + p.Cd2 * start.vx * start.vx;
-		double Fy_f = -Fn_f * p.D_f * std::sin(p.C_f * std::atan(p.B_f * alpha_f));
-		double Fy_r = -Fn_r * p.D_r * std::sin(p.C_r * std::atan(p.B_r * alpha_r));
 
 		const double iq = pid_controller_.compute(start.accel_cmd, start.ax, dt);
 
-		Fx_f, Fx_r, Fy_f, Fy_r = (0.4/0.6)*(Fx_f, Fx_r, Fy_f, Fy_r);
+		// Fx_f *= start.mu;
+		// Fx_r *= start.mu;
+		// Fy_f *= start.mu;
+		// Fy_r *= start.mu;
+
+		Fx_f *= 1.0;
+		Fx_r *= 1.0;
+		Fy_f *= 1.0;
+		Fy_r *= 1.0;
 
 		const double x_dot = start.vx * std::cos(start.yaw) - start.vy * std::sin(start.yaw);
 		const double y_dot = start.vx * std::sin(start.yaw) + start.vy * std::cos(start.yaw);
@@ -529,7 +541,7 @@ public:
 		end.vw = start.vw + vw_dot * dt;
 		end.ax = vx_dot - start.r * start.vy;
 		end.ay = vy_dot + start.r * start.vx;
-		end.slip_angle = std::atan2(end.vy, start.vx);
+		end.slip_angle = std::atan2(end.vy, end.vx);
 		end.slip_rate = kappa;
 		end.iq = iq;
 

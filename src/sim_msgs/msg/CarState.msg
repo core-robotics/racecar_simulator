@@ -5,6 +5,7 @@ float64 vx
 float64 vy
 float64 r
 float64 vw
+float64 mu
 float64 ax
 float64 ay
 float64 slip_angle
