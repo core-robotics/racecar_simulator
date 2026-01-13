@@ -7,7 +7,7 @@
                 "/opt/ros/humble/include/**",
                 "/home/a/racecar_simulator/src/racecar_simulator/include/**",
                 "/usr/include/**",
-                "/opt/libtorch/include/**",
+                "/opt/libtorch/include/**"
 
             ],
             "defines": [],

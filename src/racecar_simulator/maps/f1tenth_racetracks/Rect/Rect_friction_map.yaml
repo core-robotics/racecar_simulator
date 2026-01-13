@@ -1,0 +1,5 @@
+image: Rect_friction_map.png
+resolution: 0.050000
+origin: [-4.479863, -11.654408, 0.000000]
+mu_min: 0.4
+mu_max: 1.5

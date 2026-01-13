@@ -12,7 +12,7 @@ def generate_launch_description():
     pkg_dir = '/home/a/racecar_simulator/src/racecar_simulator/'
 
 
-    map_name = "icra2025"
+    map_name = "Rect"
 
     # 1. Austin
     # 2. Melbourne
@@ -42,11 +42,11 @@ def generate_launch_description():
     simulation_config_file = os.path.join(pkg_dir, "params", "simulation.yaml")
     race_stat_config_file = os.path.join(pkg_dir, "params", "race_stats.yaml")
     map_folder = os.path.join(pkg_dir, "maps/f1tenth_racetracks")
-    # map_img = os.path.join(map_folder, map_name, map_name + "_map.png")
-    map_img = os.path.join(map_folder, map_name, map_name + "_map.pgm")
+    map_img = os.path.join(map_folder, map_name, map_name + "_map.png")
+    # map_img = os.path.join(map_folder, map_name, map_name + "_map.pgm")
     map_yaml = os.path.join(map_folder, map_name, map_name + "_map.yaml")
     map_center = os.path.join(map_folder, map_name, map_name + "_centerline.csv")
-
+    friction_yaml = os.path.join(map_folder, map_name, map_name + "_friction_map.yaml")
 
     car0_xacro_file = os.path.join(pkg_dir, "params", "racecar0.xacro")
     car1_xacro_file = os.path.join(pkg_dir, "params", "racecar1.xacro")
@@ -105,6 +105,16 @@ def generate_launch_description():
             {"race_line_file_path": map_center},
         ],
     )
+    
+    friction_map_node = Node(
+        package="racecar_simulator",
+        executable="friction_map",
+        name="friction_map",
+        output="screen",
+        parameters=[
+            {"friction_yaml": friction_yaml},
+        ],
+    )
 
     rviz_node = Node(
         package="rviz2",
@@ -115,64 +125,13 @@ def generate_launch_description():
         # parameters=[{"use_sim_time": True}],
     )
     
-    # pure_pursuit_node = Node(
-    #     package="pure_pursuit",
-    #     executable="pure_pursuit",
-    #     name="pure_pursuit",
-    #     output="screen",
-    #     #train
-    #     parameters=[
-    #         {"lookahead": 1.5},
-    #         {"wheelbase": 0.33},
-    #         {"speed_min": 0.7},
-    #         {"speed_max": 4.0},
-    #         {"k_speed": 2.5},
-    #         {"k_accel": 6.0},
-    #         {"accel_min": -15.0},
-    #         {"accel_max": 15.0},
-    #     ],
-        # # eval
-        # parameters=[
-        #     {"lookahead": 1.0},
-        #     {"wheelbase": 0.33},
-        #     {"speed_min": 0.7},
-        #     {"speed_max": 3.0},
-        #     {"k_speed": 2.0},
-        #     {"k_accel": 5.0},
-        #     {"accel_min": -15.0},
-        #     {"accel_max": 15.0},
-        # ],
-    # )
-    
-    # pure_pursuit_node = Node(
-    #     package="pure_pursuit",
-    #     executable="sine_sweep",
-    #     name="sine_sweep",
-    #     output="screen",
-    #     parameters=[
-    #         {"amplitude": 0.5},
-    #         {"frequency_start": 0.1},
-    #         {"frequency_end": 2.0},
-    #         {"duration": 60.0},
-    #     ],
-    # )
 
-    # racecar_stat_node = Node(
-    #     package="racecar_simulator",
-    #     executable="race_stat",
-    #     name="race_stat",
-    #     output="screen",
-    #     parameters=[
-    #         race_stat_config_file,
-    #     ],
-    # )
 
     ld.add_action(rviz_node)
     ld.add_action(racecar_node)
     ld.add_action(map_publisher_node)
+    ld.add_action(friction_map_node)
     ld.add_action(robot0_state_publisher_node)
-    # ld.add_action(pure_pursuit_node)
-    # ld.add_action(racecar_stat_node)
-    # ld.add_action(robot1_state_publisher_node)
+
 
     return ld

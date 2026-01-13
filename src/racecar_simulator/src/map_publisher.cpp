@@ -24,7 +24,7 @@ public:
     declare_parameter<std::string>("map_yaml_file_path", "map.yaml");
     declare_parameter<std::string>("race_line_file_path", "race_line.csv");
     declare_parameter<std::string>("frame_id", "map");
-    declare_parameter<double>("obstacle_radius_m", 0.1);
+    declare_parameter<double>("obstacle_radius_m", 0.03);
     // declare_parameter<bool>("use_sim_time", false);
 
     get_parameter("map_img_file_path", img_path_);

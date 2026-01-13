@@ -9,6 +9,7 @@ endif()
 # Find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclpy REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(ackermann_msgs REQUIRED)
@@ -19,6 +20,9 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(grid_map_msgs REQUIRED)
+find_package(grid_map_core REQUIRED)
+find_package(grid_map_ros REQUIRED)
 find_package(sim_msgs REQUIRED)
 
 # Include directories
@@ -28,6 +32,7 @@ include_directories(include)
 add_executable(simulator src/simulator.cpp)
 add_executable(map_publisher src/map_publisher.cpp)
 add_executable(race_stat src/race_stat.cpp)
+add_executable(friction_map src/friction_map.cpp)
 
 add_library(scan_simulator_2d src/scan_simulator_2d.cpp)
 add_library(distance_transform src/distance_transform.cpp)
@@ -73,16 +78,31 @@ ament_target_dependencies(race_stat
   yaml-cpp
 )
 
+ament_target_dependencies(friction_map
+  rclcpp
+  grid_map_msgs
+  grid_map_core
+  grid_map_ros
+  yaml-cpp
+)
+
 ament_target_dependencies(param_loader
   rclcpp
 )
 
 
-# Install executables
+# Install cpp executables
 install(TARGETS
   simulator
   map_publisher
   race_stat
+  friction_map
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+# Install python executables
+install(PROGRAMS
+  scripts/write_centerline.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
