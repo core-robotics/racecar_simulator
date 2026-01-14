@@ -1,571 +1,371 @@
+// grid_dubins_controller.cpp
 #include <rclcpp/rclcpp.hpp>
-#include <nav_msgs/msg/odometry.hpp>
 #include <ackermann_msgs/msg/ackermann_drive_stamped.hpp>
-#include <sensor_msgs/msg/laser_scan.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <sensor_msgs/msg/laser_scan.hpp>
 
-#include <algorithm>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2/LinearMath/Matrix3x3.h>
+
 #include <cmath>
+#include <iostream>
 #include <limits>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
-class DataControl : public rclcpp::Node
+namespace
+{
+    struct Pose2D
+    {
+        double x{0}, y{0}, yaw{0};
+    };
+
+    double clamp(double v, double lo, double hi) { return std::max(lo, std::min(hi, v)); }
+    double normAng(double a) { return std::remainder(a, 2.0 * M_PI); }
+    double yawFromQuat(const geometry_msgs::msg::Quaternion &q)
+    {
+        tf2::Quaternion tfq(q.x, q.y, q.z, q.w);
+        tf2::Matrix3x3 m(tfq);
+        double r, p, y;
+        m.getRPY(r, p, y);
+        return y;
+    }
+    Pose2D vecToPose(const std::vector<double> &v) { return v.size() >= 3 ? Pose2D{v[0], v[1], v[2]} : Pose2D{}; }
+    Pose2D toPose2D(const nav_msgs::msg::Odometry &m) { return {m.pose.pose.position.x, m.pose.pose.position.y, yawFromQuat(m.pose.pose.orientation)}; }
+    Pose2D toPose2D(const geometry_msgs::msg::PoseStamped &m) { return {m.pose.position.x, m.pose.position.y, yawFromQuat(m.pose.orientation)}; }
+
+    // world point -> base frame of base_w
+    Pose2D worldToBase(const Pose2D &base_w, const Pose2D &pt_w)
+    {
+        double dx = pt_w.x - base_w.x, dy = pt_w.y - base_w.y, c = std::cos(-base_w.yaw), s = std::sin(-base_w.yaw);
+        return {c * dx - s * dy, s * dx + c * dy, normAng(pt_w.yaw - base_w.yaw)};
+    }
+} // namespace
+
+class GridDubinsController : public rclcpp::Node
 {
 public:
-    DataControl() : Node("data_control_node")
+    GridDubinsController() : Node("grid_dubins_controller")
     {
-        // Speeds
-        explore_speed_mps_ = declare_parameter<double>("explore_speed_mps", 1.0);
-        explore_risk_speed_mps_ = declare_parameter<double>("explore_risk_speed_mps", 1.0);
-
-        // Grid timing
-        grid_hold_sec_ = declare_parameter<double>("grid_hold_time_sec", 1.0);
-        grid_cooldown_sec_ = declare_parameter<double>("grid_trigger_cooldown_sec", 3.0);
-
-        // Explore steering
-        explore_fov_half_deg_ = declare_parameter<double>("explore_fov_half_deg", 90.0);
-        explore_window_half_deg_ = declare_parameter<double>("explore_window_half_deg", 7.0);
-        steer_limit_rad_ = declare_parameter<double>("steering_limit_rad", 0.42);
-
-        // Grid safety fan
-        grid_horizon_mul_ = declare_parameter<double>("grid_distance_horizon_multiplier", 2.0);
-        grid_margin_m_ = declare_parameter<double>("grid_distance_margin_m", 1.0);
-        fan_base_half_deg_ = declare_parameter<double>("grid_fan_base_half_deg", 10.0);
-        fan_half_gain_deg_per_rad_ = declare_parameter<double>("grid_fan_half_gain_deg_per_rad", 25.0);
-        fan_center_gain_deg_per_rad_ = declare_parameter<double>("grid_fan_center_gain_deg_per_rad", 30.0);
-        require_both_clear_ = declare_parameter<bool>("require_both_points_clear", true);
-
-        // Scan freshness
-        scan_timeout_sec_ = declare_parameter<double>("scan_timeout_sec", 0.2);
-
-        // TTC risk
-        ttc_enter_sec_ = declare_parameter<double>("ttc_risk_enter_sec", 0.7);
-        ttc_exit_sec_ = declare_parameter<double>("ttc_risk_exit_sec", 1.2);
-        ttc_exit_hold_sec_ = declare_parameter<double>("ttc_risk_exit_hold_sec", 0.5);
-
-        // Start Pose
-        left_start_pose_1_ = declare_parameter<double>("left_start_pose_1", -2.0,-0.2, -1.6);
-        left_start_pose_2_ = declare_parameter<double>("left_start_pose_2", 2.0, -8.5, 1.6);
-        right_start_pose_1_ = declare_parameter<double>("right_start_pose_1", 2.0, -0.2, -1.6);
-        right_start_pose_2_ = declare_parameter<double>("right_start_pose_2", -2.0, -8.5, 1.6);
-
-        // Grids
-        left_steer_grid_rad_ = declare_parameter<std::vector<double>>(
-            "left_steer_grid_rad", std::vector<double>{0.1, 0.2, 0.3, 0.4});
-        right_steer_grid_rad_ = declare_parameter<std::vector<double>>(
-            "right_steer_grid_rad", std::vector<double>{-0.1, -0.2, -0.3, -0.4});
-        speed_grid_mps_ = declare_parameter<std::vector<double>>(
-            "speed_grid_mps", std::vector<double>{2.0, 3.0, 4.0, 5.0});
-
-        // Topics
         odom_topic_ = declare_parameter<std::string>("odom_topic", "odom0");
+        pose_topic_ = declare_parameter<std::string>("pose_topic", "pose0");
         scan_topic_ = declare_parameter<std::string>("scan_topic", "scan0");
         drive_topic_ = declare_parameter<std::string>("drive_topic", "ackermann_cmd0");
 
-        buildGridPoints();
+        start_poses_ = {
+            vecToPose(declare_parameter<std::vector<double>>("start_pose_1", {-1.5, -0.7, -1.6})),
+            vecToPose(declare_parameter<std::vector<double>>("start_pose_2", {1.5, -8.0, 1.6})),
+            vecToPose(declare_parameter<std::vector<double>>("start_pose_3", {1.5, -0.7, -1.6})),
+            vecToPose(declare_parameter<std::vector<double>>("start_pose_4", {-1.5, -8.0, 1.6}))};
+
+        left_steers_ = declare_parameter<std::vector<double>>("left_steer_grid_rad", {-0.1, -0.2, -0.3, -0.4});
+        right_steers_ = declare_parameter<std::vector<double>>("right_steer_grid_rad", {0.1, 0.2, 0.3, 0.4});
+        speeds_ = declare_parameter<std::vector<double>>("speed_grid_mps", {2.0, 3.0, 4.0, 5.0});
+
+        wheelbase_m_ = declare_parameter<double>("wheelbase_m", 0.33);
+        sim_dt_s_ = declare_parameter<double>("sim_dt_s", 0.05);
+        sim_horizon_s_ = declare_parameter<double>("sim_horizon_s", 2.0);
+        clear_radius_m_ = declare_parameter<double>("clear_radius_m", 0.60);
+        min_valid_range_m_ = declare_parameter<double>("min_valid_range_m", 0.05);
+
+        move_speed_mps_ = declare_parameter<double>("move_speed_mps", 2.0);
+        max_steer_rad_ = declare_parameter<double>("max_steer_abs_rad", 0.45);
+
+        goal_tol_m_ = declare_parameter<double>("goal_tol_m", 0.50);
+        goal_tol_yaw_rad_ = declare_parameter<double>("goal_tol_yaw_rad", 0.35);
+
+        ttc_done_s_ = declare_parameter<double>("ttc_threshold_s", 1.0);
+        front_done_m_ = declare_parameter<double>("front_space_threshold_m", 1.5);
+
         buildGridPairs();
-        pair_done_.assign(grid_pairs_.size(), 0);
 
-        auto pub_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable();
-        auto sub_qos = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort();
-
-        drive_pub_ = create_publisher<ackermann_msgs::msg::AckermannDriveStamped>(drive_topic_, pub_qos);
+        drive_pub_ = create_publisher<ackermann_msgs::msg::AckermannDriveStamped>(drive_topic_, 10);
 
         odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
-            odom_topic_, sub_qos,
-            [this](nav_msgs::msg::Odometry::SharedPtr msg)
-            {
-                odom_ = *msg;
-                has_odom_ = true;
-            });
-        
+            odom_topic_, rclcpp::SensorDataQoS(),
+            [&](nav_msgs::msg::Odometry::SharedPtr m)
+            { odom_pose_=toPose2D(*m); have_odom_=true; });
+
         pose_sub_ = create_subscription<geometry_msgs::msg::PoseStamped>(
-            "pose0", sub_qos,
-            [this](geometry_msgs::msg::PoseStamped::SharedPtr msg)
-            {
-                pose_ = *msg;
-                has_pose_ = true;
-            });
+            pose_topic_, rclcpp::SensorDataQoS(),
+            [&](geometry_msgs::msg::PoseStamped::SharedPtr m)
+            { pose_pose_=toPose2D(*m); have_pose_=true; });
 
         scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
-            scan_topic_, sub_qos,
-            [this](sensor_msgs::msg::LaserScan::SharedPtr msg)
-            {
-                scan_ = *msg;
-                has_scan_ = true;
-                last_scan_time_ = now();
-            });
+            scan_topic_, rclcpp::SensorDataQoS(),
+            [&](sensor_msgs::msg::LaserScan::SharedPtr m)
+            { scan_=*m; have_scan_=true; });
 
-        timer_ = create_wall_timer(std::chrono::milliseconds(10), std::bind(&DataControl::onTimer, this));
+        timer_ = create_wall_timer(std::chrono::milliseconds(20), [&]
+                                   { tick(); });
 
-        last_grid_start_time_ = now();
-        grid_step_start_time_ = now();
-        last_scan_time_ = now();
-        last_pose_time_ = now();
+        std::cout << "[INIT] starts=" << start_poses_.size() << " grids=" << grid_pairs_.size() << "\n";
     }
 
 private:
     enum class Mode
     {
-        Explore,
-        Grid
-    };
-    struct StartPose
-    {
-        double x;
-        double y;
-        double yaw_rad;
-    };
-    struct GridPoint
-    {
-        double steer_rad;
-        double speed_mps;
-    };
-    struct GridPair
-    {
-        size_t a;
-        size_t b;
+        WAIT,
+        MOVE_TO_START,
+        EXECUTE_GRID
     };
 
-private:
-    // ---------- Main loop ----------
-    void onTimer()
-    {
-        if (!has_scan_)
-            return;
-        if ((now() - last_scan_time_).seconds() > scan_timeout_sec_)
-            return;
-
-        updateRiskState();
-
-        if (mode_ == Mode::Explore)
-        {
-            tryEnterGrid();
-            const double steer = steerToOpenSpace(scan_);
-            const double speed = risk_active_ ? explore_risk_speed_mps_ : explore_speed_mps_;
-            publishDrive(steer, speed);
-            std::cout << "Explore" << std::endl;
-            std::cout << "Steer: " << steer << ", Speed: " << speed << std::endl;
-            return;
-        }
-
-        runGrid();
-    }
-
-    // ---------- Drive ----------
-    void publishDrive(double steer_rad, double speed_mps)
-    {
-        steer_rad = clamp(steer_rad, -steer_limit_rad_, steer_limit_rad_);
-        last_cmd_speed_mps_ = speed_mps;
-
-        ackermann_msgs::msg::AckermannDriveStamped cmd;
-        cmd.header.stamp = now();
-        cmd.header.frame_id = "base_link";
-        cmd.drive.steering_angle = steer_rad;
-        cmd.drive.speed = speed_mps;
-        cmd.drive.acceleration = 0.0;
-        drive_pub_->publish(cmd);
-    }
-
-    double currentSpeedMps() const
-    {
-        if (has_odom_)
-            return std::max(0.0, static_cast<double>(odom_.twist.twist.linear.x));
-        return std::max(0.0, last_cmd_speed_mps_);
-    }
-
-    // ---------- Explore steering ----------
-    double steerToOpenSpace(const sensor_msgs::msg::LaserScan &scan) const
-    {
-        if (scan.angle_increment <= 0.0 || scan.ranges.empty())
-            return 0.0;
-
-        const double fov_half = deg2rad(explore_fov_half_deg_);
-        const double win_half = deg2rad(explore_window_half_deg_);
-
-        const double right = std::max(-fov_half, static_cast<double>(scan.angle_min));
-        const double left = std::min(fov_half, static_cast<double>(scan.angle_max));
-        if (right > left)
-            return 0.0;
-
-        const int i0 = clampIndex(angleToIndex(scan, right), scan.ranges.size());
-        const int i1 = clampIndex(angleToIndex(scan, left), scan.ranges.size());
-        int lo = std::min(i0, i1), hi = std::max(i0, i1);
-
-        const int win_half_n = std::max(1, static_cast<int>(std::round(win_half / scan.angle_increment)));
-
-        double best_score = -1.0;
-        int best_i = (lo + hi) / 2;
-
-        for (int i = lo; i <= hi; ++i)
-        {
-            const int a = std::max(lo, i - win_half_n);
-            const int b = std::min(hi, i + win_half_n);
-
-            double sum = 0.0;
-            int cnt = 0;
-            for (int j = a; j <= b; ++j)
-            {
-                const float r = scan.ranges[static_cast<size_t>(j)];
-                if (!isValidRange(scan, r))
-                    continue;
-                sum += r;
-                cnt++;
-            }
-
-            if (cnt < (b - a + 1) / 3)
-                continue;
-
-            const double score = sum / std::max(1, cnt);
-            if (score > best_score)
-            {
-                best_score = score;
-                best_i = i;
-            }
-        }
-
-        return static_cast<double>(scan.angle_min) + best_i * static_cast<double>(scan.angle_increment);
-    }
-
-    // ---------- Grid safety check ----------
-    bool isFanClear(const sensor_msgs::msg::LaserScan &scan, double steer_rad, double speed_mps) const
-    {
-        if (scan.angle_increment <= 0.0 || scan.ranges.empty())
-            return false;
-
-        const double need_m =
-            speed_mps * grid_hold_sec_ * grid_horizon_mul_ + grid_margin_m_;
-
-        const double center = deg2rad(fan_center_gain_deg_per_rad_ * steer_rad);
-        const double half = deg2rad(fan_base_half_deg_ + fan_half_gain_deg_per_rad_ * std::fabs(steer_rad));
-
-        const double right = std::max(center - half, static_cast<double>(scan.angle_min));
-        const double left = std::min(center + half, static_cast<double>(scan.angle_max));
-        if (right > left)
-            return false;
-
-        int i0 = clampIndex(angleToIndex(scan, right), scan.ranges.size());
-        int i1 = clampIndex(angleToIndex(scan, left), scan.ranges.size());
-        int lo = std::min(i0, i1), hi = std::max(i0, i1);
-
-        int valid = 0;
-        for (int i = lo; i <= hi; ++i)
-        {
-            const float r = scan.ranges[static_cast<size_t>(i)];
-            if (!isValidRange(scan, r))
-                continue;
-            valid++;
-            if (static_cast<double>(r) < need_m)
-                return false;
-        }
-        return valid >= (hi - lo + 1) / 3;
-    }
-
-    // ---------- Grid (pair-of-pairs) ----------
-    void tryEnterGrid()
-    {
-        if (grid_pairs_.empty() || grid_points_.empty())
-            return;
-        if (pairs_done_ >= grid_pairs_.size())
-            return;
-        if ((now() - last_grid_start_time_).seconds() < grid_cooldown_sec_)
-            return;
-        if (risk_active_)
-            return;
-
-        auto idx = findNextRunnablePair(grid_pair_index_);
-        if (!idx)
-            return;
-
-        grid_pair_index_ = *idx;
-        run_a_step_ = true;
-        mode_ = Mode::Grid;
-        grid_step_start_time_ = now();
-        last_grid_start_time_ = now();
-    }
-
-    void runGrid()
-    {
-        if (pairs_done_ >= grid_pairs_.size())
-        {
-            mode_ = Mode::Explore;
-            return;
-        }
-
-        if (risk_active_)
-        {
-            mode_ = Mode::Explore; // progress kept
-            return;
-        }
-
-        // Skip already-done pairs quickly
-        if (pair_done_[grid_pair_index_])
-        {
-            auto idx = findNextRunnablePair((grid_pair_index_ + 1) % grid_pairs_.size());
-            if (!idx)
-            {
-                mode_ = Mode::Explore;
-                return;
-            }
-            grid_pair_index_ = *idx;
-            run_a_step_ = true;
-            grid_step_start_time_ = now();
-            return;
-        }
-
-        const GridPair &pair = grid_pairs_[grid_pair_index_];
-        const GridPoint &p = run_a_step_ ? grid_points_[pair.a] : grid_points_[pair.b];
-
-        // If blocked: drop back to Explore and advance index to avoid getting stuck
-        if (!isFanClear(scan_, p.steer_rad, p.speed_mps))
-        {
-            mode_ = Mode::Explore;
-            grid_pair_index_ = (grid_pair_index_ + 1) % grid_pairs_.size();
-            run_a_step_ = true;
-            return;
-        }
-
-        publishDrive(p.steer_rad, p.speed_mps);
-        std::cout << "Grid" << std::endl;
-        std::cout << "Steer: " << p.steer_rad << ", Speed: " << p.speed_mps << std::endl;
-
-        if ((now() - grid_step_start_time_).seconds() < grid_hold_sec_)
-            return;
-
-        grid_step_start_time_ = now();
-
-        if (run_a_step_)
-        {
-            run_a_step_ = false;
-            return;
-        } // A -> B
-
-        // B done => mark pair done
-        if (!pair_done_[grid_pair_index_])
-        {
-            pair_done_[grid_pair_index_] = 1;
-            pairs_done_++;
-        }
-
-        auto next = findNextRunnablePair((grid_pair_index_ + 1) % grid_pairs_.size());
-        if (!next)
-        {
-            mode_ = Mode::Explore;
-            return;
-        }
-
-        grid_pair_index_ = *next;
-        run_a_step_ = true;
-    }
-
-    std::optional<size_t> findNextRunnablePair(size_t start) const
-    {
-        if (grid_pairs_.empty())
-            return std::nullopt;
-
-        const size_t N = grid_pairs_.size();
-        for (size_t k = 0; k < N; ++k)
-        {
-            const size_t idx = (start + k) % N;
-            if (pair_done_[idx])
-                continue;
-
-            const auto &pair = grid_pairs_[idx];
-            const auto &a = grid_points_[pair.a];
-            const auto &b = grid_points_[pair.b];
-
-            if (!isFanClear(scan_, a.steer_rad, a.speed_mps))
-                continue;
-            if (require_both_clear_ && !isFanClear(scan_, b.steer_rad, b.speed_mps))
-                continue;
-
-            return idx;
-        }
-        return std::nullopt;
-    }
-
-    // ---------- Risk (TTC) ----------
-    void updateRiskState()
-    {
-        min_ttc_sec_ = computeMinTtc(scan_, currentSpeedMps());
-
-        if (min_ttc_sec_ < ttc_enter_sec_)
-        {
-            risk_active_ = true;
-            risk_exit_start_.reset();
-            return;
-        }
-
-        if (!risk_active_)
-            return;
-
-        if (min_ttc_sec_ > ttc_exit_sec_)
-        {
-            if (!risk_exit_start_)
-                risk_exit_start_ = now();
-            if ((now() - *risk_exit_start_).seconds() >= ttc_exit_hold_sec_)
-            {
-                risk_active_ = false;
-                risk_exit_start_.reset();
-            }
-        }
-        else
-        {
-            risk_exit_start_.reset();
-        }
-    }
-
-    double computeMinTtc(const sensor_msgs::msg::LaserScan &scan, double speed_mps) const
-    {
-        if (speed_mps <= 0.1)
-            return std::numeric_limits<double>::infinity();
-
-        double best = std::numeric_limits<double>::infinity();
-        double angle = scan.angle_min;
-
-        for (size_t i = 0; i < scan.ranges.size(); ++i, angle += scan.angle_increment)
-        {
-            const float r = scan.ranges[i];
-            if (!isValidRange(scan, r))
-                continue;
-
-            const double closing = speed_mps * std::cos(angle);
-            if (closing <= 1e-3)
-                continue;
-
-            best = std::min(best, static_cast<double>(r) / closing);
-        }
-        return best;
-    }
-
-    // ---------- Grid builders ----------
-    void buildGridPoints()
-    {
-        grid_points_.clear();
-        grid_points_.reserve(left_steer_grid_rad_.size() * speed_grid_mps_.size());
-        for (double steer : left_steer_grid_rad_)
-            for (double speed : speed_grid_mps_)
-                grid_points_.push_back(GridPoint{steer, speed});
-    }
+    Pose2D curPose() const { return have_pose_ ? pose_pose_ : (have_odom_ ? odom_pose_ : Pose2D{}); }
 
     void buildGridPairs()
     {
         grid_pairs_.clear();
-        const size_t n = grid_points_.size();
-        grid_pairs_.reserve(n * n);
-        for (size_t i = 0; i < n; ++i)
-            for (size_t j = 0; j < n; ++j)
-                grid_pairs_.push_back(GridPair{i, j});
+        for (double s : left_steers_)
+            for (double v : speeds_)
+                grid_pairs_.push_back({s, v});
+        for (double s : right_steers_)
+            for (double v : speeds_)
+                grid_pairs_.push_back({s, v});
+        if (!speeds_.empty())
+            grid_pairs_.push_back({0.0, speeds_.front()});
     }
 
-    // ---------- Small helpers ----------
-    static double deg2rad(double deg) { return deg * M_PI / 180.0; }
-
-    static double clamp(double v, double lo, double hi)
+    double rangeAt(double ang) const
     {
-        return std::max(lo, std::min(hi, v));
+        if (!have_scan_)
+            return std::numeric_limits<double>::infinity();
+        const auto &s = scan_;
+        if (ang < s.angle_min || ang > s.angle_max)
+            return std::numeric_limits<double>::infinity();
+        int i = (int)std::lround((ang - s.angle_min) / s.angle_increment);
+        if (i < 0 || i >= (int)s.ranges.size())
+            return std::numeric_limits<double>::infinity();
+        float r = s.ranges[i];
+        if (!std::isfinite(r) || r < min_valid_range_m_)
+            return std::numeric_limits<double>::infinity();
+        return (double)r;
     }
 
-    static bool isValidRange(const sensor_msgs::msg::LaserScan &scan, float r)
+    // 전방 공간(0rad)만 아주 간단히 체크 (필요하면 ±몇 도 최소값으로 확장 가능)
+    double frontSpaceM() const { return rangeAt(0.0); }
+
+    bool hitRay(double ang, double dist) const { return rangeAt(ang) <= dist; }
+
+    std::vector<Pose2D> simLocal(double steer, double speed, double horizon) const
     {
-        return std::isfinite(r) && r > scan.range_min && r < scan.range_max;
+        std::vector<Pose2D> pts;
+        Pose2D p{};
+        int n = std::max(1, (int)std::ceil(horizon / sim_dt_s_));
+        for (int k = 0; k < n; k++)
+        {
+            pts.push_back(p);
+            double yaw_rate = (std::abs(steer) < 1e-6) ? 0.0 : (speed / wheelbase_m_) * std::tan(steer);
+            p.x += speed * std::cos(p.yaw) * sim_dt_s_;
+            p.y += speed * std::sin(p.yaw) * sim_dt_s_;
+            p.yaw = normAng(p.yaw + yaw_rate * sim_dt_s_);
+        }
+        return pts;
     }
 
-    static int clampIndex(int i, size_t n)
+    bool pathFree(const std::vector<Pose2D> &path_local) const
     {
-        if (n == 0)
-            return 0;
-        return std::max(0, std::min(i, static_cast<int>(n - 1)));
+        for (auto &p : path_local)
+        {
+            double d = std::hypot(p.x, p.y);
+            if (d < 1e-6)
+                continue;
+            double a = std::atan2(p.y, p.x);
+            if (hitRay(a, d + clear_radius_m_))
+                return false;
+        }
+        return true;
     }
 
-    static int angleToIndex(const sensor_msgs::msg::LaserScan &scan, double angle)
+    double ttcApprox(double steer, double speed) const
     {
-        const double a = std::min(std::max(angle, static_cast<double>(scan.angle_min)),
-                                  static_cast<double>(scan.angle_max));
-        return static_cast<int>(std::round((a - scan.angle_min) / scan.angle_increment));
+        if (!have_scan_ || speed <= 1e-3)
+            return std::numeric_limits<double>::infinity();
+        auto path = simLocal(steer, speed, sim_horizon_s_);
+        double best = std::numeric_limits<double>::infinity();
+        for (auto &p : path)
+        {
+            double d = std::hypot(p.x, p.y);
+            if (d < 1e-3)
+                continue;
+            double a = std::atan2(p.y, p.x);
+            if (hitRay(a, d + clear_radius_m_))
+                best = std::min(best, d / speed);
+        }
+        return best;
+    }
+
+    bool reached(const Pose2D &cur, const Pose2D &goal) const
+    {
+        double dx = goal.x - cur.x, dy = goal.y - cur.y;
+        return std::hypot(dx, dy) <= goal_tol_m_ && std::abs(normAng(goal.yaw - cur.yaw)) <= goal_tol_yaw_rad_;
+    }
+
+    bool chooseDubinsLikeSteer(const Pose2D &cur_w, const Pose2D &goal_w, double &steer_out) const
+    {
+        Pose2D goal_b = worldToBase(cur_w, goal_w);
+        std::vector<double> cand = {-max_steer_rad_, 0.0, max_steer_rad_};
+        double best = std::numeric_limits<double>::infinity();
+        bool ok = false;
+
+        for (double s : cand)
+        {
+            auto path = simLocal(s, move_speed_mps_, sim_horizon_s_);
+            if (!pathFree(path))
+                continue;
+            const auto &end = path.back();
+            double pos = std::hypot(goal_b.x - end.x, goal_b.y - end.y);
+            double yaw = std::abs(normAng(goal_b.yaw - end.yaw));
+            double score = pos + 0.5 * yaw;
+            if (score < best)
+            {
+                best = score;
+                steer_out = s;
+                ok = true;
+            }
+        }
+        return ok;
+    }
+
+    std::optional<std::pair<double, double>> pickGrid() const
+    {
+        for (auto &g : grid_pairs_)
+        {
+            auto path = simLocal(g.first, g.second, sim_horizon_s_);
+            if (pathFree(path))
+                return g;
+        }
+        return std::nullopt;
+    }
+
+    void pub(double steer, double speed)
+    {
+        ackermann_msgs::msg::AckermannDriveStamped m;
+        m.header.stamp = now();
+        m.drive.steering_angle = clamp(steer, -max_steer_rad_, max_steer_rad_);
+        m.drive.speed = std::max(0.0, speed);
+        drive_pub_->publish(m);
+    }
+
+    void nextStart() { start_idx_ = (start_idx_ + 1) % std::max<size_t>(1, start_poses_.size()); }
+
+    void tick()
+    {
+        if (!have_scan_ || (!have_odom_ && !have_pose_))
+        {
+            mode_ = Mode::WAIT;
+            pub(0, 0);
+            return;
+        }
+
+        Pose2D cur = curPose();
+        Pose2D goal = start_poses_[start_idx_];
+
+        if (mode_ == Mode::WAIT)
+        {
+            mode_ = Mode::MOVE_TO_START;
+            std::cout << "[MODE] MOVE_TO_START\n";
+        }
+
+        if (mode_ == Mode::MOVE_TO_START)
+        {
+            if (reached(cur, goal))
+            {
+                mode_ = Mode::EXECUTE_GRID;
+                active_grid_.reset();
+                std::cout << "[MODE] EXECUTE_GRID start_idx=" << start_idx_ << "\n";
+                return;
+            }
+            double steer = 0.0;
+            bool ok = chooseDubinsLikeSteer(cur, goal, steer);
+            pub(ok ? steer : 0.0, move_speed_mps_);
+
+            static int k = 0;
+            if (++k % 25 == 0)
+                std::cout << "[MOVE] start_idx=" << start_idx_ << " steer=" << steer << " cur=(" << cur.x << "," << cur.y << ")\n";
+            return;
+        }
+
+        if (mode_ == Mode::EXECUTE_GRID)
+        {
+            if (!active_grid_)
+            {
+                active_grid_ = pickGrid();
+                if (!active_grid_)
+                {
+                    std::cout << "[GRID] no feasible grid -> switch start\n";
+                    nextStart();
+                    mode_ = Mode::MOVE_TO_START;
+                    pub(0.0, move_speed_mps_);
+                    return;
+                }
+                std::cout << "[GRID] select steer=" << active_grid_->first << " speed=" << active_grid_->second << "\n";
+            }
+
+            double steer = active_grid_->first;
+            double speed = active_grid_->second;
+
+            // 요구사항: 3번(그리드 실행) 중
+            // TTC < 1초 OR 전방 공간 < 1.5m 이면 완료 처리하고 2번 실행 (정지 없음)
+            double ttc = ttcApprox(steer, speed);
+            double front = frontSpaceM();
+
+            if (ttc < ttc_done_s_ || front < front_done_m_)
+            {
+                std::cout << "[GRID] done: ttc=" << ttc << " front=" << front << " -> MOVE_TO_START (no stop)\n";
+                nextStart();
+                mode_ = Mode::MOVE_TO_START;
+                active_grid_.reset();
+                pub(0.0, move_speed_mps_); // 정지 없이 즉시 다음 단계 command
+                return;
+            }
+
+            pub(steer, speed);
+
+            static int k = 0;
+            if (++k % 25 == 0)
+                std::cout << "[GRID] steer=" << steer << " speed=" << speed << " ttc=" << ttc << " front=" << front << "\n";
+            return;
+        }
     }
 
 private:
-    // ROS
+    // topics
+    std::string odom_topic_, pose_topic_, scan_topic_, drive_topic_;
+
+    // params / config
+    std::vector<Pose2D> start_poses_;
+    std::vector<double> left_steers_, right_steers_, speeds_;
+    std::vector<std::pair<double, double>> grid_pairs_;
+
+    double wheelbase_m_{0.33}, sim_dt_s_{0.05}, sim_horizon_s_{2.0};
+    double clear_radius_m_{0.6}, min_valid_range_m_{0.05};
+    double move_speed_mps_{2.0}, max_steer_rad_{0.45};
+    double goal_tol_m_{0.5}, goal_tol_yaw_rad_{0.35};
+    double ttc_done_s_{1.0}, front_done_m_{1.5};
+
+    // ros
     rclcpp::Publisher<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive_pub_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
+    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_sub_;
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
     rclcpp::TimerBase::SharedPtr timer_;
 
-    // Messages
-    nav_msgs::msg::Odometry odom_;
+    // state
+    bool have_odom_{false}, have_pose_{false}, have_scan_{false};
+    Pose2D odom_pose_, pose_pose_;
     sensor_msgs::msg::LaserScan scan_;
-    bool has_odom_{false};
-    bool has_scan_{false};
-
-    // Topics
-    std::string odom_topic_;
-    std::string scan_topic_;
-    std::string drive_topic_;
-
-    // Explore
-    double explore_speed_mps_{1.0};
-    double explore_risk_speed_mps_{1.0};
-    double last_cmd_speed_mps_{0.0};
-    double explore_fov_half_deg_{90.0};
-    double explore_window_half_deg_{7.0};
-    double steer_limit_rad_{0.42};
-
-    // Grid timing
-    double grid_hold_sec_{1.0};
-    double grid_cooldown_sec_{3.0};
-
-    // Grid safety fan
-    double grid_horizon_mul_{2.0};
-    double grid_margin_m_{1.0};
-    double fan_base_half_deg_{10.0};
-    double fan_half_gain_deg_per_rad_{25.0};
-    double fan_center_gain_deg_per_rad_{30.0};
-    bool require_both_clear_{true};
-
-    // Scan freshness
-    double scan_timeout_sec_{0.2};
-
-    // Risk (TTC)
-    double ttc_enter_sec_{0.7};
-    double ttc_exit_sec_{1.2};
-    double ttc_exit_hold_sec_{0.5};
-    double min_ttc_sec_{std::numeric_limits<double>::infinity()};
-    bool risk_active_{false};
-    std::optional<rclcpp::Time> risk_exit_start_;
-
-    // Start Pose (x, y, yaw_rad)
-    StartPose left_start_pose_1_{-2.0, -0.2, -1.6};
-    StartPose left_start_pose_2_{2.0, -8.5, 1.6};
-    StartPose right_start_pose_1_{2.0, -0.2, -1.6};
-    StartPose right_start_pose_2_{-2.0, -8.5, 1.6};
-
-    // Grid definition
-    std::vector<double> left_steer_grid_rad_;
-    std::vector<double> right_steer_grid_rad_;
-    std::vector<double> speed_grid_mps_;
-    std::vector<GridPoint> grid_points_;
-    std::vector<GridPair> grid_pairs_;
-
-    // Grid progress
-    std::vector<uint8_t> pair_done_;
-    size_t pairs_done_{0};
-    size_t grid_pair_index_{0};
-    bool run_a_step_{true};
-
-    // State
-    Mode mode_{Mode::Explore};
-    rclcpp::Time grid_step_start_time_{0, 0, RCL_ROS_TIME};
-    rclcpp::Time last_grid_start_time_{0, 0, RCL_ROS_TIME};
-    rclcpp::Time last_scan_time_{0, 0, RCL_ROS_TIME};
+    Mode mode_{Mode::WAIT};
+    size_t start_idx_{0};
+    std::optional<std::pair<double, double>> active_grid_;
 };
 
 int main(int argc, char **argv)
 {
     rclcpp::init(argc, argv);
-    rclcpp::spin(std::make_shared<DataControl>());
+    rclcpp::spin(std::make_shared<GridDubinsController>());
     rclcpp::shutdown();
     return 0;
 }
