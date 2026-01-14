@@ -11,6 +11,7 @@ float64 ay
 float64 slip_angle
 float64 slip_rate
 float64 accel_cmd
+float64 vel_cmd
 float64 iq
 float64 steer
 float64 steer_vel

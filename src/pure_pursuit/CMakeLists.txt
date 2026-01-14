@@ -11,10 +11,12 @@ find_package(ament_cmake REQUIRED)
 find_package(control_msgs REQUIRED)
 find_package(ackermann_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 
 add_executable(pure_pursuit src/pure_pursuit.cpp)
 add_executable(sine_sweep src/sine_sweep.cpp)
+add_executable(data_control src/data_control.cpp)
 
 ament_target_dependencies(pure_pursuit
   rclcpp
@@ -31,10 +33,20 @@ ament_target_dependencies(sine_sweep
   tf2
 )
 
+ament_target_dependencies(data_control
+  rclcpp
+  ackermann_msgs
+  nav_msgs
+  sensor_msgs
+  geometry_msgs
+  tf2
+)
+
 
 install(TARGETS
   pure_pursuit
   sine_sweep
+  data_control
   DESTINATION lib/${PROJECT_NAME}
 )
 

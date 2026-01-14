@@ -56,6 +56,9 @@ ament_target_dependencies(simulator
   sim_msgs
   nav_msgs
   sensor_msgs
+  grid_map_msgs
+  grid_map_core
+  grid_map_ros
   yaml-cpp
 )
 ament_target_dependencies(map_publisher

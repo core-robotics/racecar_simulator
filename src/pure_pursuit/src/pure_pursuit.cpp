@@ -101,7 +101,8 @@ private:
     cmd.header.stamp = now();
     cmd.header.frame_id = "base_link";
     cmd.drive.steering_angle = steer;
-    cmd.drive.acceleration   = a_cmd;
+    // cmd.drive.acceleration   = a_cmd;
+    cmd.drive.speed = v_ref;
     // Optional: set speed field unused or as reference
     // cmd.drive.speed = 0.0;
 

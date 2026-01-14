@@ -23,6 +23,9 @@
 #include "sensor_msgs/msg/laser_scan.hpp"
 #include "sensor_msgs/msg/imu.hpp"
 #include "std_msgs/msg/bool.hpp"
+#include <grid_map_core/grid_map_core.hpp>
+#include <grid_map_ros/grid_map_ros.hpp>
+#include <grid_map_msgs/msg/grid_map.hpp>
 #include "racecar_simulator/scan_simulator_2d.hpp"
 
 using namespace std::chrono_literals;
@@ -71,6 +74,7 @@ private:
 	rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive0_sub_;
 	rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive1_sub_;
 	rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
+	rclcpp::Subscription<grid_map_msgs::msg::GridMap>::SharedPtr fric_sub_;
 	rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr center_path_sub_;
 	rclcpp::Publisher<sim_msgs::msg::CarState>::SharedPtr state0_pub_;
 	rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan0_pub_;
@@ -116,17 +120,17 @@ private:
 	// ---- 3DM-CV7 100 Hz 기준 파라미터 ----
 	// const double ACC_NOISE_BASE  = 0.00208;      // [m/s^2]
 	// const double ACC_NOISE_K     = 2.69e-5;      // heteroscedastic
-	const double ACC_NOISE_BASE  = 0.2;      // [m/s^2]
-	const double ACC_NOISE_K     = 3.0e-1;      // heteroscedastic
-	const double ACC_BIAS_RW     = 2.9e-6;       // [m/s^2 / sqrt(s)]
-	const double ACC_TURNON_SIG  = 3.9e-4;       // [m/s^2]
+	const double ACC_NOISE_BASE = 0.2;	  // [m/s^2]
+	const double ACC_NOISE_K = 3.0e-1;	  // heteroscedastic
+	const double ACC_BIAS_RW = 2.9e-6;	  // [m/s^2 / sqrt(s)]
+	const double ACC_TURNON_SIG = 3.9e-4; // [m/s^2]
 
 	// const double GYRO_NOISE_BASE = 0.00029;      // [rad/s]
 	// const double GYRO_NOISE_K    = 3.32e-5;      // heteroscedastic
-		const double GYRO_NOISE_BASE = 0.03;      // [rad/s]
-	const double GYRO_NOISE_K    = 4.0e-2;      // heteroscedastic
-	const double GYRO_BIAS_RW    = 1.2e-7;       // [rad/s / sqrt(s)]
-	const double GYRO_TURNON_SIG = 7.0e-5;       // [rad/s]
+	const double GYRO_NOISE_BASE = 0.03;   // [rad/s]
+	const double GYRO_NOISE_K = 4.0e-2;	   // heteroscedastic
+	const double GYRO_BIAS_RW = 1.2e-7;	   // [rad/s / sqrt(s)]
+	const double GYRO_TURNON_SIG = 7.0e-5; // [rad/s]
 
 	double bias_ax_{0.0};
 	double bias_ay_{0.0};
@@ -136,6 +140,8 @@ private:
 	bool map_exists_ = false;
 	nav_msgs::msg::OccupancyGrid original_map_;
 	nav_msgs::msg::OccupancyGrid current_map_;
+
+	grid_map::GridMap friction_map_;
 
 	bool car0_collision_ = false;
 	bool car1_collision_ = false;
@@ -151,7 +157,8 @@ private:
 	sim_msgs::msg::CarState init_car_state0_;
 	std::mt19937 rng_{std::random_device{}()};
 	std::normal_distribution<double> n01_{0.0, 1.0};
-	PIDController pid_controller_;
+	PIDController vel_to_iq_pid_;
+	PIDController vel_to_accel_pid_;
 
 public:
 	RacecarSimulator()
@@ -257,7 +264,8 @@ public:
 		this->get_parameter("motor_i", motor_i_);
 		this->get_parameter("motor_d", motor_d_);
 
-		pid_controller_.set_gains(motor_p_, motor_i_, motor_d_);
+		vel_to_iq_pid_.set_gains(motor_p_, motor_i_, motor_d_);
+		vel_to_accel_pid_.set_gains(10.0, 0.0, 0.5);
 
 		// Convert frequencies to durations
 		auto simulator_period = std::chrono::duration<double>(1.0 / simulator_frequency_);
@@ -297,6 +305,9 @@ public:
 		map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
 			"map", r_t_qos, std::bind(&RacecarSimulator::mapCallback, this, std::placeholders::_1));
 
+		fric_sub_ = this->create_subscription<grid_map_msgs::msg::GridMap>(
+			"friction_gridmap", r_t_qos, std::bind(&RacecarSimulator::frictionMapCallback, this, std::placeholders::_1));
+
 		scan0_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic0_, r_qos);
 		state0_pub_ = this->create_publisher<sim_msgs::msg::CarState>(state_topic0_, r_qos);
 		collision0_pub_ = this->create_publisher<std_msgs::msg::Bool>(collision_topic0_, r_qos);
@@ -313,7 +324,7 @@ public:
 		RCLCPP_INFO(this->get_logger(), "\nIMU frequency: %f Hz", imu_frequency_);
 	}
 
-		// utility functions
+	// utility functions
 	inline double wrapAngle(double a)
 	{
 		// normalize to [-pi, pi]
@@ -350,6 +361,7 @@ public:
 			car_state0_.slip_angle = 0.0;
 			car_state0_.slip_rate = 0.0;
 			car_state0_.accel_cmd = 0.0;
+			car_state0_.vel_cmd = 0.0;
 			car_state0_.iq = 0.0;
 			car_state0_.steer = 0.0;
 			car_state0_.steer_vel = 0.0;
@@ -455,6 +467,34 @@ public:
 		RCLCPP_INFO(this->get_logger(), "\nCar0 x: %f, y: %f, yaw: %f", car_state0_.px, car_state0_.py, car_state0_.yaw);
 	}
 
+	double getFrictionAt(double x, double y)
+	{
+		const std::string layer = "friction";
+
+		if (!friction_map_.exists(layer))
+		{
+			return 1.0;
+		}
+
+		const grid_map::Position position(x, y);
+
+		grid_map::Index index;
+		if (!friction_map_.getIndex(position, index))
+		{
+			RCLCPP_WARN(this->get_logger(), "Friction index is out of range!");
+			return 1.0;
+		}
+
+		const float v = friction_map_.at(layer, index);
+		if (!std::isfinite(v))
+		{
+			RCLCPP_WARN(this->get_logger(), "Friction value is not finite!");
+			return 1.0;
+		}
+
+		return static_cast<double>(v);
+	}
+
 	sim_msgs::msg::CarState update_k(const sim_msgs::msg::CarState &start,
 									 const CarParams &p)
 	{
@@ -463,8 +503,9 @@ public:
 		const double L = p.l_f + p.l_r;
 		const double dt = 1.0 / simulator_frequency_;
 		// integrate input
-		const double vx = start.vx + start.accel_cmd * dt;
-		const double vx_mid = start.vx + 0.5 * start.accel_cmd * dt;
+		const double accel_cmd = vel_to_accel_pid_.compute(start.vel_cmd, start.vx, dt);
+		const double vx = start.vx + accel_cmd * dt;
+		const double vx_mid = start.vx + 0.5 * accel_cmd * dt;
 
 		const double x_dot = vx_mid * std::cos(start.yaw);
 		const double y_dot = vx_mid * std::sin(start.yaw);
@@ -478,17 +519,20 @@ public:
 		end.vy = 0.0;
 		end.r = yaw_dot;
 		end.vw = vx;
+		end.mu = getFrictionAt(end.px, end.py);
+
 		return end;
 	}
 
 	// Callback for drive command of car0
 	void drive0Callback(const ackermann_msgs::msg::AckermannDriveStamped::SharedPtr msg)
 	{
-		car_state0_.steer = clamp(msg->drive.steering_angle, -0.4, 0.4);
-		car_state0_.accel_cmd = clamp(msg->drive.acceleration, -20.0, 20.0);
+		car_state0_.steer = msg->drive.steering_angle;
+		car_state0_.accel_cmd = msg->drive.acceleration;
+		car_state0_.vel_cmd = msg->drive.speed;
 	}
 	// Update car state using Pacejka tire model
-	sim_msgs::msg::CarState updateStatePacejka(const sim_msgs::msg::CarState& start, const CarParams& p)
+	sim_msgs::msg::CarState updateStatePacejka(const sim_msgs::msg::CarState &start, const CarParams &p)
 	{
 		sim_msgs::msg::CarState end = start;
 		const double dt = 1.0 / simulator_frequency_;
@@ -509,17 +553,18 @@ public:
 
 		const double F_drag = p.Cd0 * sign0(start.vx) + p.Cd1 * start.vx + p.Cd2 * start.vx * start.vx;
 
-		const double iq = pid_controller_.compute(start.accel_cmd, start.ax, dt);
+		// const double iq = vel_to_iq_pid_.compute(start.accel_cmd, start.ax, dt);
+		const double iq = vel_to_iq_pid_.compute(start.vel_cmd, start.vw, dt);
 
-		// Fx_f *= start.mu;
-		// Fx_r *= start.mu;
-		// Fy_f *= start.mu;
-		// Fy_r *= start.mu;
+		Fx_f *= start.mu;
+		Fx_r *= start.mu;
+		Fy_f *= start.mu;
+		Fy_r *= start.mu;
 
-		Fx_f *= 1.0;
-		Fx_r *= 1.0;
-		Fy_f *= 1.0;
-		Fy_r *= 1.0;
+		// Fx_f *= 1.0;
+		// Fx_r *= 1.0;
+		// Fy_f *= 1.0;
+		// Fy_r *= 1.0;
 
 		const double x_dot = start.vx * std::cos(start.yaw) - start.vy * std::sin(start.yaw);
 		const double y_dot = start.vx * std::sin(start.yaw) + start.vy * std::cos(start.yaw);
@@ -530,7 +575,6 @@ public:
 		const double vw_dot = (p.wheel_radius / p.power_train_inertia) *
 							  (p.motor_torque_constant * iq - p.wheel_radius * (Fx_f + Fx_r) -
 							   p.viscous_friction * start.vw - sign0(start.vw) * p.coulomb_friction);
-
 
 		end.px = start.px + x_dot * dt;
 		end.py = start.py + y_dot * dt;
@@ -544,7 +588,7 @@ public:
 		end.slip_angle = std::atan2(end.vy, end.vx);
 		end.slip_rate = kappa;
 		end.iq = iq;
-
+		end.mu = getFrictionAt(end.px, end.py);
 		return end;
 	}
 
@@ -597,6 +641,12 @@ public:
 
 		map_exists_ = true;
 	}
+
+	void frictionMapCallback(const grid_map_msgs::msg::GridMap::SharedPtr msg)
+	{
+		grid_map::GridMapRosConverter::fromMessage(*msg, friction_map_);
+	}
+
 	// Publish state of car0
 	void pub_state()
 	{
@@ -773,18 +823,20 @@ public:
 	}
 	void init_biases_if_needed()
 	{
-		if (bias_initialized_) return;
+		if (bias_initialized_)
+			return;
 
 		bias_ax_ = gen_noise(ACC_TURNON_SIG);
 		bias_ay_ = gen_noise(ACC_TURNON_SIG);
-		bias_r_  = gen_noise(GYRO_TURNON_SIG);
+		bias_r_ = gen_noise(GYRO_TURNON_SIG);
 
 		bias_initialized_ = true;
 	}
 
 	void imu_noise(sensor_msgs::msg::Imu &imu_msg, double dt)
 	{
-		if (dt <= 0.0) {
+		if (dt <= 0.0)
+		{
 			dt = 1.0 / 100.0;
 		}
 
@@ -793,7 +845,7 @@ public:
 		// 1) bias random walk
 		update_bias_random_walk(bias_ax_, ACC_BIAS_RW, dt);
 		update_bias_random_walk(bias_ay_, ACC_BIAS_RW, dt);
-		update_bias_random_walk(bias_r_,  GYRO_BIAS_RW, dt);
+		update_bias_random_walk(bias_r_, GYRO_BIAS_RW, dt);
 
 		// 2) ax, ay
 		{
@@ -840,10 +892,8 @@ public:
 		imu_msg.linear_acceleration.y = gen_noise(1.0) + state.ay;
 		imu_msg.linear_acceleration.z = 0.0;
 
-	
-		double dt = 1.0 / imu_frequency_;
+		// double dt = 1.0 / imu_frequency_;
 		// imu_noise(imu_msg, dt);
-		
 
 		imu_pub->publish(imu_msg);
 	}
