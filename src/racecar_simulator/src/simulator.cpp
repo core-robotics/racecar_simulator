@@ -884,12 +884,12 @@ public:
 		imu_msg.angular_velocity.x = 0.0;
 		imu_msg.angular_velocity.y = 0.0;
 		// imu_msg.angular_velocity.z = state.r;
-		imu_msg.angular_velocity.z = gen_noise(0.1) + state.r;
+		imu_msg.angular_velocity.z = gen_noise(0.01) + state.r;
 
 		// imu_msg.linear_acceleration.x = state.ax;
 		// imu_msg.linear_acceleration.y = state.ay;
-		imu_msg.linear_acceleration.x = gen_noise(1.0) + state.ax;
-		imu_msg.linear_acceleration.y = gen_noise(1.0) + state.ay;
+		imu_msg.linear_acceleration.x = gen_noise(0.5) + state.ax;
+		imu_msg.linear_acceleration.y = gen_noise(0.5) + state.ay;
 		imu_msg.linear_acceleration.z = 0.0;
 
 		// double dt = 1.0 / imu_frequency_;
