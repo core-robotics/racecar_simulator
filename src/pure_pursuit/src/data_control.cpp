@@ -1,371 +1,491 @@
-// grid_dubins_controller.cpp
 #include <rclcpp/rclcpp.hpp>
-#include <ackermann_msgs/msg/ackermann_drive_stamped.hpp>
-#include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
-#include <sensor_msgs/msg/laser_scan.hpp>
-
+#include <nav_msgs/msg/path.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <ackermann_msgs/msg/ackermann_drive_stamped.hpp>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Matrix3x3.h>
 
-#include <cmath>
-#include <iostream>
-#include <limits>
-#include <optional>
-#include <string>
-#include <utility>
 #include <vector>
+#include <random>
+#include <optional>
+#include <cmath>
+#include <algorithm>
+#include <string>
+#include <initializer_list>
 
-namespace
+struct Point2D
 {
-    struct Pose2D
-    {
-        double x{0}, y{0}, yaw{0};
-    };
+    double x = 0.0, y = 0.0;
+};
 
-    double clamp(double v, double lo, double hi) { return std::max(lo, std::min(hi, v)); }
-    double normAng(double a) { return std::remainder(a, 2.0 * M_PI); }
-    double yawFromQuat(const geometry_msgs::msg::Quaternion &q)
-    {
-        tf2::Quaternion tfq(q.x, q.y, q.z, q.w);
-        tf2::Matrix3x3 m(tfq);
-        double r, p, y;
-        m.getRPY(r, p, y);
-        return y;
-    }
-    Pose2D vecToPose(const std::vector<double> &v) { return v.size() >= 3 ? Pose2D{v[0], v[1], v[2]} : Pose2D{}; }
-    Pose2D toPose2D(const nav_msgs::msg::Odometry &m) { return {m.pose.pose.position.x, m.pose.pose.position.y, yawFromQuat(m.pose.pose.orientation)}; }
-    Pose2D toPose2D(const geometry_msgs::msg::PoseStamped &m) { return {m.pose.position.x, m.pose.position.y, yawFromQuat(m.pose.orientation)}; }
+static inline double wrapAngle(double a)
+{
+    while (a > M_PI)
+        a -= 2 * M_PI;
+    while (a < -M_PI)
+        a += 2 * M_PI;
+    return a;
+}
+static inline double sqr(double v) { return v * v; }
+static inline double dist2(const Point2D &a, const Point2D &b) { return sqr(a.x - b.x) + sqr(a.y - b.y); }
 
-    // world point -> base frame of base_w
-    Pose2D worldToBase(const Pose2D &base_w, const Pose2D &pt_w)
-    {
-        double dx = pt_w.x - base_w.x, dy = pt_w.y - base_w.y, c = std::cos(-base_w.yaw), s = std::sin(-base_w.yaw);
-        return {c * dx - s * dy, s * dx + c * dy, normAng(pt_w.yaw - base_w.yaw)};
-    }
-} // namespace
+static inline double yawFromQuat(const geometry_msgs::msg::Quaternion &q)
+{
+    tf2::Quaternion tq(q.x, q.y, q.z, q.w);
+    tf2::Matrix3x3 m(tq);
+    double r, p, y;
+    m.getRPY(r, p, y);
+    return y;
+}
 
-class GridDubinsController : public rclcpp::Node
+static inline Point2D projectToSegment(const Point2D &p, const Point2D &a, const Point2D &b, double &t01)
+{
+    const double vx = b.x - a.x, vy = b.y - a.y;
+    const double wx = p.x - a.x, wy = p.y - a.y;
+    const double denom = vx * vx + vy * vy;
+    double t = (denom > 1e-12) ? (wx * vx + wy * vy) / denom : 0.0;
+    t = std::clamp(t, 0.0, 1.0);
+    t01 = t;
+    return {a.x + t * vx, a.y + t * vy};
+}
+
+class PathDriverNode final : public rclcpp::Node
 {
 public:
-    GridDubinsController() : Node("grid_dubins_controller")
+    PathDriverNode() : rclcpp::Node("path_driver_node")
     {
-        odom_topic_ = declare_parameter<std::string>("odom_topic", "odom0");
         pose_topic_ = declare_parameter<std::string>("pose_topic", "pose0");
-        scan_topic_ = declare_parameter<std::string>("scan_topic", "scan0");
         drive_topic_ = declare_parameter<std::string>("drive_topic", "ackermann_cmd0");
+        odom_topic_ = declare_parameter<std::string>("odom_topic", "odom0");
+        path_topic_ = declare_parameter<std::string>("path_topic", "active_path");
+        frame_id_ = declare_parameter<std::string>("frame_id", "map");
 
-        start_poses_ = {
-            vecToPose(declare_parameter<std::vector<double>>("start_pose_1", {-1.5, -0.7, -1.6})),
-            vecToPose(declare_parameter<std::vector<double>>("start_pose_2", {1.5, -8.0, 1.6})),
-            vecToPose(declare_parameter<std::vector<double>>("start_pose_3", {1.5, -0.7, -1.6})),
-            vecToPose(declare_parameter<std::vector<double>>("start_pose_4", {-1.5, -8.0, 1.6}))};
+        // geometry / switching
+        margin_ = declare_parameter<double>("margin", 0.20);
+        samples_ = declare_parameter<int>("samples", 160);
+        wheelbase_m_ = declare_parameter<double>("wheelbase", 0.33);
+        switch_radius_ = declare_parameter<double>("switch_radius", 1.50);
 
-        left_steers_ = declare_parameter<std::vector<double>>("left_steer_grid_rad", {-0.1, -0.2, -0.3, -0.4});
-        right_steers_ = declare_parameter<std::vector<double>>("right_steer_grid_rad", {0.1, 0.2, 0.3, 0.4});
-        speeds_ = declare_parameter<std::vector<double>>("speed_grid_mps", {2.0, 3.0, 4.0, 5.0});
+        // lookahead (speed-based)
+        lookahead_base_ = declare_parameter<double>("lookahead_base", 0.7);
+        lookahead_gain_ = declare_parameter<double>("lookahead_gain", 0.4);
+        lookahead_min_ = declare_parameter<double>("lookahead_min", 0.7);
+        lookahead_max_ = declare_parameter<double>("lookahead_max", 3.0);
 
-        wheelbase_m_ = declare_parameter<double>("wheelbase_m", 0.33);
-        sim_dt_s_ = declare_parameter<double>("sim_dt_s", 0.05);
-        sim_horizon_s_ = declare_parameter<double>("sim_horizon_s", 2.0);
-        clear_radius_m_ = declare_parameter<double>("clear_radius_m", 0.60);
-        min_valid_range_m_ = declare_parameter<double>("min_valid_range_m", 0.05);
+        // speed randomization
+        speed_min_ = declare_parameter<double>("speed_min", 1.0);
+        speed_max_ = declare_parameter<double>("speed_max", 5.0);
+        change_min_s_ = declare_parameter<double>("change_min_s", 0.2);
+        change_max_s_ = declare_parameter<double>("change_max_s", 3.0);
+        if (speed_min_ > speed_max_)
+            std::swap(speed_min_, speed_max_);
+        if (change_min_s_ > change_max_s_)
+            std::swap(change_min_s_, change_max_s_);
+        change_min_s_ = std::max(1e-3, change_min_s_);
+        change_max_s_ = std::max(change_min_s_, change_max_s_);
 
-        move_speed_mps_ = declare_parameter<double>("move_speed_mps", 2.0);
-        max_steer_rad_ = declare_parameter<double>("max_steer_abs_rad", 0.45);
-
-        goal_tol_m_ = declare_parameter<double>("goal_tol_m", 0.50);
-        goal_tol_yaw_rad_ = declare_parameter<double>("goal_tol_yaw_rad", 0.35);
-
-        ttc_done_s_ = declare_parameter<double>("ttc_threshold_s", 1.0);
-        front_done_m_ = declare_parameter<double>("front_space_threshold_m", 1.5);
-
-        buildGridPairs();
-
-        drive_pub_ = create_publisher<ackermann_msgs::msg::AckermannDriveStamped>(drive_topic_, 10);
-
-        odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
-            odom_topic_, rclcpp::SensorDataQoS(),
-            [&](nav_msgs::msg::Odometry::SharedPtr m)
-            { odom_pose_=toPose2D(*m); have_odom_=true; });
+        // track bounds (as in your code)
+        x_min_ = -2.0;
+        x_max_ = 2.0;
+        y_min_ = -9.0;
+        y_max_ = -0.5;
 
         pose_sub_ = create_subscription<geometry_msgs::msg::PoseStamped>(
-            pose_topic_, rclcpp::SensorDataQoS(),
-            [&](geometry_msgs::msg::PoseStamped::SharedPtr m)
-            { pose_pose_=toPose2D(*m); have_pose_=true; });
+            pose_topic_, 10, [this](geometry_msgs::msg::PoseStamped::SharedPtr msg)
+            { last_pose_ = *msg; });
 
-        scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
-            scan_topic_, rclcpp::SensorDataQoS(),
-            [&](sensor_msgs::msg::LaserScan::SharedPtr m)
-            { scan_=*m; have_scan_=true; });
+        odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
+            odom_topic_, 10, [this](nav_msgs::msg::Odometry::SharedPtr msg)
+            { last_odom_ = *msg; });
 
-        timer_ = create_wall_timer(std::chrono::milliseconds(20), [&]
-                                   { tick(); });
+        drive_pub_ = create_publisher<ackermann_msgs::msg::AckermannDriveStamped>(drive_topic_, 10);
+        path_pub_ = create_publisher<nav_msgs::msg::Path>(path_topic_, 1);
 
-        std::cout << "[INIT] starts=" << start_poses_.size() << " grids=" << grid_pairs_.size() << "\n";
+        rng_.seed(std::random_device{}());
+        buildTemplates();
+
+        reverse_path_ = coinFlip();
+        path_start_ = Endpoint::Top;
+        selectNextPath(0.0);
+
+        rescheduleSpeed();
+        timer_ = create_wall_timer(std::chrono::milliseconds(10), [this]
+                                   { onTick(); });
     }
 
 private:
-    enum class Mode
+    enum class Endpoint
     {
-        WAIT,
-        MOVE_TO_START,
-        EXECUTE_GRID
+        Top,
+        Bottom
+    };
+    enum class TemplateId
+    {
+        CapsuleR,
+        CapsuleL,
+        EightS1,
+        EightS2
     };
 
-    Pose2D curPose() const { return have_pose_ ? pose_pose_ : (have_odom_ ? odom_pose_ : Pose2D{}); }
+    Endpoint pathEnd() const { return (path_start_ == Endpoint::Top) ? Endpoint::Bottom : Endpoint::Top; }
+    const Point2D &endpointPoint(Endpoint e) const { return (e == Endpoint::Top) ? top_ : bottom_; }
 
-    void buildGridPairs()
+    double randUniform(double a, double b)
     {
-        grid_pairs_.clear();
-        for (double s : left_steers_)
-            for (double v : speeds_)
-                grid_pairs_.push_back({s, v});
-        for (double s : right_steers_)
-            for (double v : speeds_)
-                grid_pairs_.push_back({s, v});
-        if (!speeds_.empty())
-            grid_pairs_.push_back({0.0, speeds_.front()});
+        std::uniform_real_distribution<double> d(a, b);
+        return d(rng_);
+    }
+    bool coinFlip()
+    {
+        std::uniform_int_distribution<int> d(0, 1);
+        return d(rng_) == 1;
     }
 
-    double rangeAt(double ang) const
+    void rescheduleSpeed()
     {
-        if (!have_scan_)
-            return std::numeric_limits<double>::infinity();
-        const auto &s = scan_;
-        if (ang < s.angle_min || ang > s.angle_max)
-            return std::numeric_limits<double>::infinity();
-        int i = (int)std::lround((ang - s.angle_min) / s.angle_increment);
-        if (i < 0 || i >= (int)s.ranges.size())
-            return std::numeric_limits<double>::infinity();
-        float r = s.ranges[i];
-        if (!std::isfinite(r) || r < min_valid_range_m_)
-            return std::numeric_limits<double>::infinity();
-        return (double)r;
+        target_speed_ = randUniform(speed_min_, speed_max_);
+        const double dt = randUniform(change_min_s_, change_max_s_);
+        next_speed_change_ = now() + rclcpp::Duration::from_seconds(dt);
     }
 
-    // 전방 공간(0rad)만 아주 간단히 체크 (필요하면 ±몇 도 최소값으로 확장 가능)
-    double frontSpaceM() const { return rangeAt(0.0); }
-
-    bool hitRay(double ang, double dist) const { return rangeAt(ang) <= dist; }
-
-    std::vector<Pose2D> simLocal(double steer, double speed, double horizon) const
+    double lookaheadForSpeed(double v) const
     {
-        std::vector<Pose2D> pts;
-        Pose2D p{};
-        int n = std::max(1, (int)std::ceil(horizon / sim_dt_s_));
-        for (int k = 0; k < n; k++)
+        const double L = lookahead_base_ + lookahead_gain_ * v;
+        return std::clamp(L, lookahead_min_, lookahead_max_);
+    }
+
+    struct ClosestArc
+    {
+        double s = 0.0;  // arc-length position on path
+        int seg = 0;     // segment index i (between i and i+1)
+        double t = 0.0;  // interpolation on that segment
+        Point2D point{}; // closest point on the polyline
+    };
+
+    ClosestArc closestArcOnPath(const Point2D &pos) const
+    {
+        ClosestArc best;
+        double best_d2 = 1e300;
+
+        const int n = (int)active_path_.size();
+        if (n < 2)
+            return best;
+
+        for (int i = 0; i < n - 1; ++i)
         {
-            pts.push_back(p);
-            double yaw_rate = (std::abs(steer) < 1e-6) ? 0.0 : (speed / wheelbase_m_) * std::tan(steer);
-            p.x += speed * std::cos(p.yaw) * sim_dt_s_;
-            p.y += speed * std::sin(p.yaw) * sim_dt_s_;
-            p.yaw = normAng(p.yaw + yaw_rate * sim_dt_s_);
-        }
-        return pts;
-    }
-
-    bool pathFree(const std::vector<Pose2D> &path_local) const
-    {
-        for (auto &p : path_local)
-        {
-            double d = std::hypot(p.x, p.y);
-            if (d < 1e-6)
-                continue;
-            double a = std::atan2(p.y, p.x);
-            if (hitRay(a, d + clear_radius_m_))
-                return false;
-        }
-        return true;
-    }
-
-    double ttcApprox(double steer, double speed) const
-    {
-        if (!have_scan_ || speed <= 1e-3)
-            return std::numeric_limits<double>::infinity();
-        auto path = simLocal(steer, speed, sim_horizon_s_);
-        double best = std::numeric_limits<double>::infinity();
-        for (auto &p : path)
-        {
-            double d = std::hypot(p.x, p.y);
-            if (d < 1e-3)
-                continue;
-            double a = std::atan2(p.y, p.x);
-            if (hitRay(a, d + clear_radius_m_))
-                best = std::min(best, d / speed);
+            double t01 = 0.0;
+            const Point2D q = projectToSegment(pos, active_path_[i], active_path_[i + 1], t01);
+            const double d2 = dist2(pos, q);
+            if (d2 < best_d2)
+            {
+                best_d2 = d2;
+                best.seg = i;
+                best.t = t01;
+                best.point = q;
+                best.s = arc_prefix_[i] + t01 * (arc_prefix_[i + 1] - arc_prefix_[i]);
+            }
         }
         return best;
     }
 
-    bool reached(const Pose2D &cur, const Pose2D &goal) const
+    Point2D pointAtArc(double s) const
     {
-        double dx = goal.x - cur.x, dy = goal.y - cur.y;
-        return std::hypot(dx, dy) <= goal_tol_m_ && std::abs(normAng(goal.yaw - cur.yaw)) <= goal_tol_yaw_rad_;
+        const int n = (int)active_path_.size();
+        if (n == 0)
+            return {};
+        if (n == 1)
+            return active_path_[0];
+
+        const double s_end = arc_prefix_.back();
+        s = std::clamp(s, 0.0, s_end);
+
+        // find i such that arc_prefix_[i] <= s <= arc_prefix_[i+1]
+        int i = (int)(std::upper_bound(arc_prefix_.begin(), arc_prefix_.end(), s) - arc_prefix_.begin()) - 1;
+        i = std::clamp(i, 0, n - 2);
+
+        const double s0 = arc_prefix_[i];
+        const double s1 = arc_prefix_[i + 1];
+        const double t = (s1 > s0) ? (s - s0) / (s1 - s0) : 0.0;
+
+        const auto &a = active_path_[i];
+        const auto &b = active_path_[i + 1];
+        return {a.x + t * (b.x - a.x), a.y + t * (b.y - a.y)};
     }
 
-    bool chooseDubinsLikeSteer(const Pose2D &cur_w, const Pose2D &goal_w, double &steer_out) const
+    void onTick()
     {
-        Pose2D goal_b = worldToBase(cur_w, goal_w);
-        std::vector<double> cand = {-max_steer_rad_, 0.0, max_steer_rad_};
-        double best = std::numeric_limits<double>::infinity();
-        bool ok = false;
+        if (!last_pose_ || active_path_.size() < 2)
+            return;
 
-        for (double s : cand)
+        if (now() >= next_speed_change_)
+            rescheduleSpeed();
+
+        const auto &pose = last_pose_->pose;
+        const Point2D pos{pose.position.x, pose.position.y};
+        const double yaw = yawFromQuat(pose.orientation);
+
+        const Point2D &end_pt = endpointPoint(pathEnd());
+        if (dist2(pos, end_pt) < sqr(switch_radius_))
         {
-            auto path = simLocal(s, move_speed_mps_, sim_horizon_s_);
-            if (!pathFree(path))
+            path_start_ = pathEnd();
+            selectNextPath(yaw);
+            return;
+        }
+
+        // (1) segment-projection closest + arc-length lookahead
+        const ClosestArc closest = closestArcOnPath(pos);
+
+        // (2) speed-based lookahead
+        const double L_cmd = lookaheadForSpeed(last_odom_ ? last_odom_->twist.twist.linear.x : 0.0);
+        const Point2D tgt = pointAtArc(closest.s + L_cmd);
+
+        // compute curvature using target point in vehicle frame (stable)
+        const double dx = tgt.x - pos.x;
+        const double dy = tgt.y - pos.y;
+        const double c = std::cos(yaw), s = std::sin(yaw);
+        const double x_r = c * dx + s * dy;
+        const double y_r = -s * dx + c * dy;
+        const double L = std::max(1e-3, std::hypot(x_r, y_r));
+        const double kappa = (2.0 * y_r) / (L * L);
+        const double steer = std::atan(wheelbase_m_ * kappa);
+
+        ackermann_msgs::msg::AckermannDriveStamped cmd;
+        cmd.header.stamp = now();
+        cmd.header.frame_id = frame_id_;
+        cmd.drive.steering_angle = steer;
+        cmd.drive.speed = target_speed_;
+        std::cout << "target speed: " << target_speed_ << " m/s\n"
+                    << "speed: " << (last_odom_ ? last_odom_->twist.twist.linear.x : 0.0) << " m/s\n"
+                    << "steer: " << steer << " rad\n\n";
+        drive_pub_->publish(cmd);
+    }
+
+    void selectNextPath(double yaw)
+    {
+        const TemplateId capsule = bestForwardTemplate({TemplateId::CapsuleR, TemplateId::CapsuleL}, yaw);
+        const TemplateId eight = bestForwardTemplate({TemplateId::EightS1, TemplateId::EightS2}, yaw);
+        const TemplateId chosen = coinFlip() ? capsule : eight;
+
+        active_path_ = orientPath(pathFromTemplate(chosen));
+        buildArcPrefix();
+        publishActivePath();
+    }
+
+    TemplateId bestForwardTemplate(const std::initializer_list<TemplateId> &cands, double yaw)
+    {
+        const double fx = std::cos(yaw), fy = std::sin(yaw);
+        TemplateId best = *cands.begin();
+        double best_dot = -1e300;
+
+        for (auto t : cands)
+        {
+            auto p = orientPath(pathFromTemplate(t));
+            if (p.size() < 2)
                 continue;
-            const auto &end = path.back();
-            double pos = std::hypot(goal_b.x - end.x, goal_b.y - end.y);
-            double yaw = std::abs(normAng(goal_b.yaw - end.yaw));
-            double score = pos + 0.5 * yaw;
-            if (score < best)
+            const double vx = p[1].x - p[0].x, vy = p[1].y - p[0].y;
+            const double dot = fx * vx + fy * vy;
+            if (dot > 0.0)
+                return t;
+            if (dot > best_dot)
             {
-                best = score;
-                steer_out = s;
-                ok = true;
+                best_dot = dot;
+                best = t;
             }
         }
-        return ok;
+        return best;
     }
 
-    std::optional<std::pair<double, double>> pickGrid() const
+    std::vector<Point2D> orientPath(std::vector<Point2D> path) const
     {
-        for (auto &g : grid_pairs_)
-        {
-            auto path = simLocal(g.first, g.second, sim_horizon_s_);
-            if (pathFree(path))
-                return g;
-        }
-        return std::nullopt;
+        if (path_start_ == Endpoint::Bottom)
+            std::reverse(path.begin(), path.end());
+        if (reverse_path_)
+            std::reverse(path.begin(), path.end());
+        return path;
     }
 
-    void pub(double steer, double speed)
+    void buildArcPrefix()
     {
-        ackermann_msgs::msg::AckermannDriveStamped m;
-        m.header.stamp = now();
-        m.drive.steering_angle = clamp(steer, -max_steer_rad_, max_steer_rad_);
-        m.drive.speed = std::max(0.0, speed);
-        drive_pub_->publish(m);
+        const int n = (int)active_path_.size();
+        arc_prefix_.assign(n, 0.0);
+        for (int i = 1; i < n; ++i)
+        {
+            const auto &a = active_path_[i - 1];
+            const auto &b = active_path_[i];
+            arc_prefix_[i] = arc_prefix_[i - 1] + std::hypot(b.x - a.x, b.y - a.y);
+        }
     }
 
-    void nextStart() { start_idx_ = (start_idx_ + 1) % std::max<size_t>(1, start_poses_.size()); }
-
-    void tick()
+    void buildTemplates()
     {
-        if (!have_scan_ || (!have_odom_ && !have_pose_))
+        const double w = x_max_ - x_min_, h = y_max_ - y_min_;
+        const double r_w = 0.5 * w - margin_;
+        const double r_h = (h - 2.0 * margin_) / 4.0;
+        radius_ = std::max(0.05, std::min(r_w, r_h));
+
+        const double cy = 0.5 * (y_min_ + y_max_);
+        top_ = {0.0, cy - 2.0 * radius_};
+        bottom_ = {0.0, cy + 2.0 * radius_};
+
+        capsule_r_ = capsuleSide(true, cy);
+        capsule_l_ = capsuleSide(false, cy);
+        eight_s1_ = eightS(true, false, cy);
+        eight_s2_ = eightS(false, true, cy);
+
+        clampToBounds(capsule_r_);
+        clampToBounds(capsule_l_);
+        clampToBounds(eight_s1_);
+        clampToBounds(eight_s2_);
+    }
+
+    std::vector<Point2D> capsuleSide(bool right, double cy)
+    {
+        const double x = right ? +radius_ : -radius_;
+        const double yt = cy - radius_, yb = cy + radius_;
+        const int n_arc = std::max(2, samples_ / 4);
+        const int n_side = std::max(2, samples_ / 2);
+
+        auto top_arc = arcPoints(0.0, yt, -M_PI / 2.0, right ? 0.0 : -M_PI, n_arc);
+
+        std::vector<Point2D> side;
+        side.reserve(n_side);
+        for (int i = 0; i < n_side; i++)
         {
-            mode_ = Mode::WAIT;
-            pub(0, 0);
-            return;
+            const double u = double(i) / double(n_side - 1);
+            side.push_back({x, yt + (yb - yt) * u});
         }
 
-        Pose2D cur = curPose();
-        Pose2D goal = start_poses_[start_idx_];
+        auto bot_arc = right
+                           ? arcPoints(0.0, yb, 0.0, M_PI / 2.0, n_arc)
+                           : arcPoints(0.0, yb, -M_PI, -3.0 * M_PI / 2.0, n_arc);
 
-        if (mode_ == Mode::WAIT)
+        std::vector<Point2D> out = top_arc;
+        out.insert(out.end(), side.begin() + 1, side.end());
+        out.insert(out.end(), bot_arc.begin() + 1, bot_arc.end());
+        return out;
+    }
+
+    std::vector<Point2D> eightS(bool top_right, bool bottom_right, double cy)
+    {
+        const double yt = cy - radius_, yb = cy + radius_;
+        const int n = std::max(2, samples_ / 2);
+
+        auto top_arc = arcPoints(0.0, yt, -M_PI / 2.0, top_right ? +M_PI / 2.0 : -3.0 * M_PI / 2.0, n);
+        auto bot_arc = arcPoints(0.0, yb, -M_PI / 2.0, bottom_right ? +M_PI / 2.0 : -3.0 * M_PI / 2.0, n);
+
+        top_arc.insert(top_arc.end(), bot_arc.begin() + 1, bot_arc.end());
+        return top_arc;
+    }
+
+    std::vector<Point2D> arcPoints(double cx, double cy, double a0, double a1, int n) const
+    {
+        n = std::max(2, n);
+        std::vector<Point2D> pts;
+        pts.reserve(n);
+        for (int i = 0; i < n; i++)
         {
-            mode_ = Mode::MOVE_TO_START;
-            std::cout << "[MODE] MOVE_TO_START\n";
+            const double u = double(i) / double(n - 1);
+            const double a = a0 + (a1 - a0) * u;
+            pts.push_back({cx + radius_ * std::cos(a), cy + radius_ * std::sin(a)});
         }
+        return pts;
+    }
 
-        if (mode_ == Mode::MOVE_TO_START)
+    void clampToBounds(std::vector<Point2D> &pts) const
+    {
+        const double xmin = x_min_ + margin_, xmax = x_max_ - margin_;
+        const double ymin = y_min_ + margin_, ymax = y_max_ - margin_;
+        for (auto &p : pts)
         {
-            if (reached(cur, goal))
-            {
-                mode_ = Mode::EXECUTE_GRID;
-                active_grid_.reset();
-                std::cout << "[MODE] EXECUTE_GRID start_idx=" << start_idx_ << "\n";
-                return;
-            }
-            double steer = 0.0;
-            bool ok = chooseDubinsLikeSteer(cur, goal, steer);
-            pub(ok ? steer : 0.0, move_speed_mps_);
-
-            static int k = 0;
-            if (++k % 25 == 0)
-                std::cout << "[MOVE] start_idx=" << start_idx_ << " steer=" << steer << " cur=(" << cur.x << "," << cur.y << ")\n";
-            return;
+            p.x = std::min(std::max(p.x, xmin), xmax);
+            p.y = std::min(std::max(p.y, ymin), ymax);
         }
+    }
 
-        if (mode_ == Mode::EXECUTE_GRID)
+    std::vector<Point2D> pathFromTemplate(TemplateId t) const
+    {
+        switch (t)
         {
-            if (!active_grid_)
-            {
-                active_grid_ = pickGrid();
-                if (!active_grid_)
-                {
-                    std::cout << "[GRID] no feasible grid -> switch start\n";
-                    nextStart();
-                    mode_ = Mode::MOVE_TO_START;
-                    pub(0.0, move_speed_mps_);
-                    return;
-                }
-                std::cout << "[GRID] select steer=" << active_grid_->first << " speed=" << active_grid_->second << "\n";
-            }
-
-            double steer = active_grid_->first;
-            double speed = active_grid_->second;
-
-            // 요구사항: 3번(그리드 실행) 중
-            // TTC < 1초 OR 전방 공간 < 1.5m 이면 완료 처리하고 2번 실행 (정지 없음)
-            double ttc = ttcApprox(steer, speed);
-            double front = frontSpaceM();
-
-            if (ttc < ttc_done_s_ || front < front_done_m_)
-            {
-                std::cout << "[GRID] done: ttc=" << ttc << " front=" << front << " -> MOVE_TO_START (no stop)\n";
-                nextStart();
-                mode_ = Mode::MOVE_TO_START;
-                active_grid_.reset();
-                pub(0.0, move_speed_mps_); // 정지 없이 즉시 다음 단계 command
-                return;
-            }
-
-            pub(steer, speed);
-
-            static int k = 0;
-            if (++k % 25 == 0)
-                std::cout << "[GRID] steer=" << steer << " speed=" << speed << " ttc=" << ttc << " front=" << front << "\n";
-            return;
+        case TemplateId::CapsuleR:
+            return capsule_r_;
+        case TemplateId::CapsuleL:
+            return capsule_l_;
+        case TemplateId::EightS1:
+            return eight_s1_;
+        case TemplateId::EightS2:
+            return eight_s2_;
         }
+        return capsule_r_;
+    }
+
+    void publishActivePath()
+    {
+        nav_msgs::msg::Path msg;
+        msg.header.stamp = now();
+        msg.header.frame_id = frame_id_;
+        msg.poses.reserve(active_path_.size());
+
+        for (const auto &p : active_path_)
+        {
+            geometry_msgs::msg::PoseStamped ps;
+            ps.header = msg.header;
+            ps.pose.position.x = p.x;
+            ps.pose.position.y = p.y;
+            ps.pose.orientation.w = 1.0;
+            msg.poses.push_back(ps);
+        }
+        path_pub_->publish(msg);
     }
 
 private:
-    // topics
-    std::string odom_topic_, pose_topic_, scan_topic_, drive_topic_;
+    std::string pose_topic_, drive_topic_, path_topic_, odom_topic_, frame_id_;
 
-    // params / config
-    std::vector<Pose2D> start_poses_;
-    std::vector<double> left_steers_, right_steers_, speeds_;
-    std::vector<std::pair<double, double>> grid_pairs_;
+    // bounds / template
+    double x_min_ = -2.0, x_max_ = 2.0, y_min_ = -9.0, y_max_ = -0.5;
+    double margin_ = 0.2;
+    int samples_ = 160;
+    double radius_ = 1.0;
+    Point2D top_{}, bottom_{};
+    std::vector<Point2D> capsule_r_, capsule_l_, eight_s1_, eight_s2_;
 
-    double wheelbase_m_{0.33}, sim_dt_s_{0.05}, sim_horizon_s_{2.0};
-    double clear_radius_m_{0.6}, min_valid_range_m_{0.05};
-    double move_speed_mps_{2.0}, max_steer_rad_{0.45};
-    double goal_tol_m_{0.5}, goal_tol_yaw_rad_{0.35};
-    double ttc_done_s_{1.0}, front_done_m_{1.5};
-
-    // ros
-    rclcpp::Publisher<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive_pub_;
-    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
-    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_sub_;
-    rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
-    rclcpp::TimerBase::SharedPtr timer_;
+    // active path + arc-length prefix
+    std::vector<Point2D> active_path_;
+    std::vector<double> arc_prefix_;
 
     // state
-    bool have_odom_{false}, have_pose_{false}, have_scan_{false};
-    Pose2D odom_pose_, pose_pose_;
-    sensor_msgs::msg::LaserScan scan_;
-    Mode mode_{Mode::WAIT};
-    size_t start_idx_{0};
-    std::optional<std::pair<double, double>> active_grid_;
+    std::optional<geometry_msgs::msg::PoseStamped> last_pose_;
+    std::optional<nav_msgs::msg::Odometry> last_odom_;
+    Endpoint path_start_ = Endpoint::Top;
+    bool reverse_path_ = false;
+
+    // control
+    double wheelbase_m_ = 0.33;
+    double switch_radius_ = 1.50;
+
+    // speed-based lookahead params
+    double lookahead_base_ = 0.7, lookahead_gain_ = 0.4, lookahead_min_ = 0.7, lookahead_max_ = 3.0;
+
+    // speed randomization
+    double speed_min_ = 1.0, speed_max_ = 5.0;
+    double change_min_s_ = 0.2, change_max_s_ = 3.0;
+    double target_speed_ = 1.5;
+    rclcpp::Time next_speed_change_{0, 0, RCL_ROS_TIME};
+
+    // ROS
+    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_sub_;
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
+    rclcpp::Publisher<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive_pub_;
+    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
+    rclcpp::TimerBase::SharedPtr timer_;
+
+    std::mt19937 rng_;
 };
 
 int main(int argc, char **argv)
 {
     rclcpp::init(argc, argv);
-    rclcpp::spin(std::make_shared<GridDubinsController>());
+    rclcpp::spin(std::make_shared<PathDriverNode>());
     rclcpp::shutdown();
     return 0;
 }

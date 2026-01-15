@@ -33,17 +33,17 @@ racecar_simulator:
     # Tire/friction model
     B_xf0: 1.5
     C_xf0: 1.5
-    D_xf0: 10.0
+    D_xf0: 25.0
     B_xr0: 1.5
     C_xr0: 1.5
-    D_xr0: 10.0
+    D_xr0: 25.0
 
     B_yf0: 1.5
     C_yf0: 1.5
-    D_yf0: 30.0
+    D_yf0: 35.0
     B_yr0: 1.5
     C_yr0: 1.5
-    D_yr0: 30.0
+    D_yr0: 35.0
 
     # Drivetrain & motor (car0)
     wheel_radius0: 0.05                 # m
