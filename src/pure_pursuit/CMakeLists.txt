@@ -8,7 +8,7 @@ endif()
 # find dependencies
 find_package(rclcpp REQUIRED)
 find_package(ament_cmake REQUIRED)
-find_package(control_msgs REQUIRED)
+# find_package(control_msgs REQUIRED)
 find_package(ackermann_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -20,7 +20,7 @@ add_executable(data_control src/data_control.cpp)
 
 ament_target_dependencies(pure_pursuit
   rclcpp
-  control_msgs
+  # control_msgs
   ackermann_msgs
   nav_msgs
   tf2
