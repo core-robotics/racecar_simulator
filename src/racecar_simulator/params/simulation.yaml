@@ -14,13 +14,14 @@ racecar_simulator:
     scan_noise_mode: false              # add noise to the scan
 
     # Topics & frames (car0)
-    drive_topic0: "ackermann_cmd0"
-    state_topic0: "state0"
-    scan_topic0: "scan0"
-    collision_topic0: "collision0"
-    odom_topic0: "odom0"
-    imu_topic0: "imu0"
-    pose_topic0: "pose0"
+    drive_topic0: "ackermann_cmd"
+    state_topic0: "state"
+    scan_topic0: "scan"
+    collision_topic0: "collision"
+    odom_topic0: "odom"
+    imu_topic0: "imu"
+    vesc_topic0: "vesc/core"
+    pose_topic0: "mcl_pose"
     base_frame0: "base_link0"
     scan_frame0: "laser_model0"
 
@@ -61,4 +62,4 @@ racecar_simulator:
     motor_p: 15.0
     motor_i: 0.1
     motor_d: 0.01
-    
+   

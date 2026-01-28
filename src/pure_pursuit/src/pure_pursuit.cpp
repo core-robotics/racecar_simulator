@@ -29,9 +29,9 @@ public:
     pad_points_     = declare_parameter("pad_points", 20); 
 
     path_topic_     = declare_parameter("path_topic",  "center_path");
-    pose_topic_     = declare_parameter("pose_topic",  "pose0");
-    odom_topic_     = declare_parameter("odom_topic",  "odom0");
-    drive_topic_    = declare_parameter("drive_topic", "ackermann_cmd0");
+    pose_topic_     = declare_parameter("pose_topic",  "mcl_pose");
+    odom_topic_     = declare_parameter("odom_topic",  "odom");
+    drive_topic_    = declare_parameter("drive_topic", "ackermann_cmd");
 
     drive_pub_ = create_publisher<ackermann_msgs::msg::AckermannDriveStamped>(drive_topic_, 1);
 
