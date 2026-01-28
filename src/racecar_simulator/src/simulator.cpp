@@ -26,6 +26,7 @@
 #include <grid_map_core/grid_map_core.hpp>
 #include <grid_map_ros/grid_map_ros.hpp>
 #include <grid_map_msgs/msg/grid_map.hpp>
+#include <vesc_msgs/msg/vesc_state_stamped.hpp>
 #include "racecar_simulator/scan_simulator_2d.hpp"
 
 using namespace std::chrono_literals;
@@ -81,6 +82,7 @@ private:
 	rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr collision0_pub_;
 	rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom0_pub_;
 	rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu0_pub_;
+	rclcpp::Publisher<vesc_msgs::msg::VescStateStamped>::SharedPtr vesc0_pub_;
 	rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose0_pub_;
 
 	sim_msgs::msg::CarState car_state0_;
@@ -104,7 +106,7 @@ private:
 	double motor_prev_e_, motor_integral_;
 	int vehicle_model0_;
 
-	std::string drive_topic0_, collision_topic0_, state_topic0_, scan_topic0_, odom_topic0_, imu_topic0_, pose_topic0_;
+	std::string drive_topic0_, collision_topic0_, state_topic0_, scan_topic0_, odom_topic0_, imu_topic0_, vesc_topic0_, pose_topic0_;
 	std::string base_frame0_, scan_frame0_;
 	std::string pgm_file_path_, yaml_file_path_;
 	double simulator_frequency_, odom_frequency_, imu_frequency_, scan_frequency_;
@@ -197,6 +199,7 @@ public:
 		this->declare_parameter("odom_topic0", "odom0");
 		this->declare_parameter("imu_topic0", "imu0");
 		this->declare_parameter("pose_topic0", "pose0");
+		this->declare_parameter("vesc_topic0", "vesc0");
 		this->declare_parameter("base_frame0", "base_link0");
 		this->declare_parameter("scan_frame0", "laser_model0");
 		this->declare_parameter("mass0", 5.1);
@@ -234,6 +237,7 @@ public:
 		this->get_parameter("odom_topic0", odom_topic0_);
 		this->get_parameter("imu_topic0", imu_topic0_);
 		this->get_parameter("pose_topic0", pose_topic0_);
+		this->get_parameter("vesc_topic0", vesc_topic0_);
 		this->get_parameter("base_frame0", base_frame0_);
 		this->get_parameter("scan_frame0", scan_frame0_);
 		this->get_parameter("mass0", car0_params_.mass);
@@ -314,6 +318,7 @@ public:
 		odom0_pub_ = this->create_publisher<nav_msgs::msg::Odometry>(odom_topic0_, r_qos);
 		imu0_pub_ = this->create_publisher<sensor_msgs::msg::Imu>(imu_topic0_, r_qos);
 		pose0_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>(pose_topic0_, r_qos);
+		vesc0_pub_ = this->create_publisher<vesc_msgs::msg::VescStateStamped>(vesc_topic0_, r_qos);
 
 		scan_simulator_ = ScanSimulator2D(scan_beams_, scan_fov_, scan_std_dev_);
 		// Initialize simulator
@@ -651,6 +656,10 @@ public:
 	void pub_state()
 	{
 		state0_pub_->publish(car_state0_);
+		const double iq = car_state0_.iq;
+		vesc_msgs::msg::VescStateStamped vesc_msg;
+		vesc_msg.state.current_motor = iq;
+		vesc0_pub_->publish(vesc_msg);
 	}
 	// Publish scan data
 	void pub_scan(const sim_msgs::msg::CarState &state,

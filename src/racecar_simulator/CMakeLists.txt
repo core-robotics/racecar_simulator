@@ -23,6 +23,7 @@ find_package(OpenCV REQUIRED)
 find_package(grid_map_msgs REQUIRED)
 find_package(grid_map_core REQUIRED)
 find_package(grid_map_ros REQUIRED)
+find_package(vesc_msgs REQUIRED)
 find_package(sim_msgs REQUIRED)
 
 # Include directories
@@ -59,6 +60,7 @@ ament_target_dependencies(simulator
   grid_map_msgs
   grid_map_core
   grid_map_ros
+  vesc_msgs
   yaml-cpp
 )
 ament_target_dependencies(map_publisher

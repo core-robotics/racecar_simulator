@@ -19,6 +19,10 @@
   <depend>visualization_msgs</depend>
   <depend>sim_msgs</depend>
   <depend>nav_msgs</depend>
+  <depend>grid_map_core</depend>
+  <depend>grid_map_ros</depend>
+  <depend>grid_map_msgs</depend>
+  <depend>vesc_msgs</depend>
 
   <export>
     <build_type>ament_cmake</build_type>
